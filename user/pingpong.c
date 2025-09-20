@@ -16,12 +16,14 @@ int main() {
     if (pid > 0) {
         #define PARENT_MSG "ping"
         write(p[1], PARENT_MSG, strlen(PARENT_MSG));
+        close(p[1]);
 
         pid = wait((int *)0);
 
         char buffer[BUFFER_LEN];
         int bytes_read = read(p[0], buffer, BUFFER_LEN - 1);
         buffer[bytes_read] = EOL;
+        close(p[0]);
 
         if (bytes_read == 0) {
             fprintf(2, "parent got E0F while reading pipe!\n");
@@ -34,6 +36,7 @@ int main() {
         char buffer[BUFFER_LEN];
         int bytes_read = read(p[0], buffer, BUFFER_LEN - 1);
         buffer[bytes_read] = EOL;
+        close(p[0]);
 
         if (bytes_read == 0) {
             fprintf(2, "child got E0F while reading pipe!\n");
@@ -44,6 +47,7 @@ int main() {
 
         #define CHILD_MSG "pong"
         write(p[1], CHILD_MSG, strlen(CHILD_MSG));
+        close(p[1]);
 
         exit(0);
     }
