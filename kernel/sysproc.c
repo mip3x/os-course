@@ -71,3 +71,8 @@ uint64 sys_uptime(void) {
     release(&tickslock);
     return xticks;
 }
+
+uint64 sys_dump(void) {
+    dump();
+    return 0;
+}

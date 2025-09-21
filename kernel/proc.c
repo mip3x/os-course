@@ -630,3 +630,20 @@ void procdump(void) {
         printf("\n");
     }
 }
+
+// Print values of all registers
+void dump(void) {
+    struct proc *p = myproc();
+
+    uint64 *s11_offset = &((struct trapframe *)0)->s11;
+    uint64 *s2_offset = &((struct trapframe *)0)->s2;
+    uint8 regs_n = (uint8)(s11_offset - s2_offset + 1);
+
+    uint64 *reg_offset = &(p->trapframe->s2);
+    for (uint8 i = 0; i < regs_n; i++) {
+        uint64 reg_val_64 = *(reg_offset + i);
+        uint32 reg_val_32 = (uint32)reg_val_64;
+
+        printf("s%d: %d\n", i + 2, reg_val_32);
+    }
+}
