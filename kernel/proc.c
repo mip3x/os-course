@@ -647,3 +647,53 @@ void dump(void) {
         printf("s%d: %d\n", i + 2, register_value_32);
     }
 }
+
+int dump2(int pid, int register_num, uint64 *return_value) {
+    if (register_num < 2 || register_num > 11) {
+        return -3;
+    }
+
+    struct proc *cur_proc = myproc();
+    if (pid == cur_proc->pid) {
+        uint64 *registers_offset = &(cur_proc->trapframe->s2);
+        // we need to get offset from s2 field in struct trapframe
+        // that's why we need to reduce register_num by 2 to get index
+        // register_num = 2 => offset from s2 = 0
+        uint8 register_index = register_num - 2;
+        uint64 register_value = *(registers_offset + register_index);
+        if (copyout(cur_proc->pagetable,
+                    *return_value,
+                    (char*)&register_value,
+                    sizeof(uint64)) == -1) {
+            return -4;
+        }
+
+        return 0;
+    }
+
+    struct proc *p; 
+    for (p = proc; p < &proc[NPROC]; p++) {
+        if (pid == p->pid) {
+            struct proc *parent = p;
+            while (parent->parent) {
+                parent = parent->parent;
+                if (parent == cur_proc) {
+                    uint64 *registers_offset = &(p->trapframe->s2);
+                    uint8 register_index = register_num - 2;
+                    uint64 register_value = *(registers_offset + register_index);
+                    if (copyout(cur_proc->pagetable,
+                                *return_value,
+                                (char*)&register_value,
+                                sizeof(uint64)) == -1) {
+                        return -4;
+                    }
+
+                    return 0;
+                }
+            }
+            return -1;
+        }
+    }
+
+    return -2;
+}

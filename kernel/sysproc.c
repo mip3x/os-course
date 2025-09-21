@@ -76,3 +76,14 @@ uint64 sys_dump(void) {
     dump();
     return 0;
 }
+
+uint64 sys_dump2(void) { 
+    int pid, register_num;
+    uint64 return_value;
+
+    argint(0, &pid);
+    argint(1, &register_num);
+    argaddr(2, &return_value);
+
+    return dump2(pid, register_num, &return_value);
+}
