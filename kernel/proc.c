@@ -657,32 +657,45 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     struct proc *cur_proc = myproc();
     struct proc *target_proc;
 
+    acquire(&cur_proc->lock);
     if (pid == cur_proc->pid) {
         target_proc = cur_proc;
+        release(&cur_proc->lock);
         goto return_register_value;
     }
+    release(&cur_proc->lock);
 
     struct proc *p_iter; 
     for (p_iter = proc; p_iter < &proc[NPROC]; p_iter++) {
+        acquire(&p_iter->lock);
         if (pid == p_iter->pid) {
+            acquire(&wait_lock);
             struct proc *parent = p_iter->parent;
 
             while (parent) {
                 if (parent == cur_proc) {
                     target_proc = p_iter;
+                    release(&wait_lock);
+                    release(&p_iter->lock);
                     goto return_register_value;
                 }
 
                 parent = parent->parent;
             }
+
+            release(&wait_lock);
+            release(&p_iter->lock);
             return -1;
         }
+        release(&p_iter->lock);
     }
 
     return -2;
 
 return_register_value:
+    acquire(&target_proc->lock);
     uint64 *registers_offset = &(target_proc->trapframe->s2);
+    release(&target_proc->lock);
     // we need to get offset from `s2` field in struct `trapframe`
     // that's why we need to reduce `register_num` by 2 to get index
     // register_num = 2 => offset from s2 = 0
