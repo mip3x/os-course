@@ -644,7 +644,7 @@ void dump(void) {
         uint64 register_value_64 = *(registers_offset + i);
         uint32 register_value_32 = (uint32)register_value_64;
 
-        printf("s%d: %d\n", i + 2, register_value_32);
+        printf("s%d = %d\n", i + 2, register_value_32);
     }
 }
 
