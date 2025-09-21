@@ -631,7 +631,7 @@ void procdump(void) {
     }
 }
 
-// Print values of all registers
+// Print values of registers s2-s11
 void dump(void) {
     struct proc *p = myproc();
 
