@@ -121,3 +121,45 @@ int memcmp(const void *s1, const void *s2, uint n) {
 void *memcpy(void *dst, const void *src, uint n) {
     return memmove(dst, src, n);
 }
+
+// Read NBYTES into BUF from FD. Return the number read, -1 for errors or 0 for EOF.
+int read_retry(int fd, void *buf, int n) {
+    char *ptr = (char*)buf;
+    int bytes_left_to_read = n;
+
+    for (int bytes_read; (bytes_read = read(fd, ptr, bytes_left_to_read)) != -1;) {
+        if (bytes_read == bytes_left_to_read) {
+            return n;
+        }
+
+        if (bytes_read == 0) {
+            return n - bytes_left_to_read;
+        }
+
+        ptr += bytes_read;
+        bytes_left_to_read -= bytes_read;
+    }
+
+    return -1;
+}
+
+// Write N bytes of BUF to FD. Return the number written, or -1.
+int write_retry(int fd, const void *buf, int n) {
+    const char *ptr = (char*)buf;
+    int bytes_left_to_write = n;
+
+    for (int bytes_wrote; (bytes_wrote = write(fd, ptr, bytes_left_to_write)) != -1;) {
+        if (bytes_wrote == bytes_left_to_write) {
+            return n;
+        }
+
+        if (bytes_wrote == 0) {
+            return -1;
+        }
+
+        ptr += bytes_wrote;
+        bytes_left_to_write -= bytes_wrote;
+    }
+
+    return -1;
+}
