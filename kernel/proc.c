@@ -630,3 +630,83 @@ void procdump(void) {
         printf("\n");
     }
 }
+
+// Print values of registers s2-s11
+void dump(void) {
+    struct proc *p = myproc();
+
+    uint64 *s11_offset = &((struct trapframe *)0)->s11;
+    uint64 *s2_offset = &((struct trapframe *)0)->s2;
+    uint8 registers_n = (uint8)(s11_offset - s2_offset + 1);
+
+    uint64 *registers_offset = &(p->trapframe->s2);
+    for (uint8 i = 0; i < registers_n; i++) {
+        uint64 register_value_64 = *(registers_offset + i);
+        uint32 register_value_32 = (uint32)register_value_64;
+
+        printf("s%d = %d\n", i + 2, register_value_32);
+    }
+}
+
+// Print register s#register_num in current state of process #pid
+int dump2(int pid, int register_num, uint64 *return_value) {
+    if (register_num < 2 || register_num > 11) {
+        return -3;
+    }
+
+    struct proc *cur_proc = myproc();
+    struct proc *target_proc;
+
+    acquire(&cur_proc->lock);
+    if (pid == cur_proc->pid) {
+        target_proc = cur_proc;
+        release(&cur_proc->lock);
+        acquire(&target_proc->lock);
+        goto return_register_value;
+    }
+    release(&cur_proc->lock);
+
+    for (target_proc = proc; target_proc < &proc[NPROC]; target_proc++) {
+        acquire(&target_proc->lock);
+        if (pid == target_proc->pid) {
+            acquire(&wait_lock);
+            struct proc *parent = target_proc->parent;
+
+            while (parent) {
+                if (parent == cur_proc) {
+                    release(&wait_lock);
+                    goto return_register_value;
+                }
+
+                parent = parent->parent;
+            }
+
+            release(&wait_lock);
+            release(&target_proc->lock);
+            return -1;
+        }
+        release(&target_proc->lock);
+    }
+
+    return -2;
+
+return_register_value:
+    uint64 *registers_offset = &(target_proc->trapframe->s2);
+
+    // we need to get offset from `s2` field in struct `trapframe`
+    // that's why we need to reduce `register_num` by 2 to get index
+    // register_num = 2 => offset from s2 = 0
+    uint8 register_index = register_num - 2;
+    uint64 register_value = *(registers_offset + register_index);
+
+    release(&target_proc->lock);
+
+    if (copyout(cur_proc->pagetable,
+                *return_value,
+                (char*)&register_value,
+                sizeof(uint64)) == -1) {
+        return -4;
+    }
+
+    return 0;
+}
