@@ -2,35 +2,35 @@ K=kernel
 U=user
 
 OBJS = \
-  $K/alloc/buddy.o \
-  $K/alloc/kalloc.o \
   $K/entry/entry.o \
-  $K/entry/main.o \
   $K/entry/start.o \
-  $K/file/bio.o \
-  $K/file/file.o \
-  $K/file/fs.o \
   $K/hw/console.o \
-  $K/hw/plic.o \
-  $K/hw/uart.o \
-  $K/ipc/pipe.o \
-  $K/lib/list.o \
   $K/lib/printf.o \
-  $K/lib/string.o \
-  $K/locking/sleeplock.o \
+  $K/hw/uart.o \
+  $K/alloc/kalloc.o \
   $K/locking/spinlock.o \
+  $K/lib/string.o \
+  $K/entry/main.o \
   $K/memory/vm.o \
-  $K/proc/exec.o \
   $K/proc/proc.o \
   $K/proc/swtch.o \
-  $K/syscall/syscall.o \
-  $K/syscall/sysfile.o \
-  $K/syscall/sysproc.o \
-  $K/trap/kernelvec.o \
   $K/trap/trampoline.o \
   $K/trap/trap.o \
-  $K/virt/virtio_disk.o \
+  $K/syscall/syscall.o \
+  $K/syscall/sysproc.o \
+  $K/file/bio.o \
+  $K/file/fs.o \
   $K/log.o \
+  $K/locking/sleeplock.o \
+  $K/file/file.o \
+  $K/ipc/pipe.o \
+  $K/proc/exec.o \
+  $K/syscall/sysfile.o \
+  $K/trap/kernelvec.o \
+  $K/hw/plic.o \
+  $K/virt/virtio_disk.o \
+  $K/alloc/buddy.o \
+  $K/lib/list.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
