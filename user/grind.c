@@ -4,13 +4,13 @@
 
 #include "kernel/param.h"
 #include "kernel/types.h"
-#include "kernel/stat.h"
+#include "kernel/file/stat.h"
 #include "user/user.h"
-#include "kernel/fs.h"
-#include "kernel/fcntl.h"
-#include "kernel/syscall.h"
-#include "kernel/memlayout.h"
-#include "kernel/riscv.h"
+#include "kernel/file/fs.h"
+#include "kernel/file/fcntl.h"
+#include "kernel/syscall/syscall.h"
+#include "kernel/hw/memlayout.h"
+#include "kernel/hw/riscv.h"
 
 // from FreeBSD.
 int do_rand(unsigned long *ctx) {
