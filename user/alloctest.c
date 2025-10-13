@@ -1,9 +1,9 @@
 #include "kernel/param.h"
 #include "kernel/types.h"
-#include "kernel/stat.h"
-#include "kernel/riscv.h"
-#include "kernel/fcntl.h"
-#include "kernel/memlayout.h"
+#include "kernel/file/stat.h"
+#include "kernel/hw/riscv.h"
+#include "kernel/file/fcntl.h"
+#include "kernel/hw/memlayout.h"
 #include "user/user.h"
 
 void test0() {

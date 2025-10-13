@@ -1,8 +1,8 @@
 #include "kernel/types.h"
-#include "kernel/stat.h"
+#include "kernel/file/stat.h"
 #include "user/user.h"
-#include "kernel/fs.h"
-#include "kernel/fcntl.h"
+#include "kernel/file/fs.h"
+#include "kernel/file/fcntl.h"
 
 char *fmtname(char *path) {
     static char buf[DIRSIZ + 1];

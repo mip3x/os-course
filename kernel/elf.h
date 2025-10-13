@@ -1,3 +1,7 @@
+#pragma once
+
+#include "kernel/types.h"
+
 // Format of an ELF executable file
 
 #define ELF_MAGIC 0x464C457FU // "\x7FELF" in little endian

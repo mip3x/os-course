@@ -1,5 +1,5 @@
 #include "kernel/types.h"
-#include "kernel/syscall.h"
+#include "kernel/syscall/syscall.h"
 #include "user/user.h"
 
 #ifdef SYS_dump2
