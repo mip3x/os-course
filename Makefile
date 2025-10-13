@@ -14,7 +14,7 @@ OBJS = \
   $K/hw/plic.o \
   $K/hw/uart.o \
   $K/ipc/pipe.o \
-  $K/lib/list.o
+  $K/lib/list.o \
   $K/lib/printf.o \
   $K/lib/string.o \
   $K/locking/sleeplock.o \
