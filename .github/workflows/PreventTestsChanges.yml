@@ -2,6 +2,8 @@ name: PreventTestsChanges
 
 on:
   pull_request:
+    branches:
+      - 'lab-*'
     paths:
       - user/alloctest.c
       - user/cowtest.c
