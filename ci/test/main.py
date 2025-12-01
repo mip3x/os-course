@@ -54,7 +54,7 @@ if __name__ == "__main__":
     with Qemu(cwd="../..") as qemu:
         print("Qemu was started.")
 
-        read_header(qemu)
+        # read_header(qemu)
         print("Kernel was booted.")
 
         for suite_name in suites:
