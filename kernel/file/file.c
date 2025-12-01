@@ -14,36 +14,31 @@
 #include "kernel/proc/proc.h"
 
 struct devsw devsw[NDEV];
-struct {
-    struct spinlock lock;
-    struct file file[NFILE];
-} ftable;
 
-void fileinit(void) { initlock(&ftable.lock, "ftable"); }
+void fileinit(void) { }
 
 // Allocate a file structure.
 struct file *filealloc(void) {
-    struct file *f;
+    struct file *f = (struct file*)bd_malloc(sizeof(struct file));
+    if (!f) return 0;
 
-    acquire(&ftable.lock);
-    for (f = ftable.file; f < ftable.file + NFILE; f++) {
-        if (f->ref == 0) {
-            f->ref = 1;
-            release(&ftable.lock);
-            return f;
-        }
-    }
-    release(&ftable.lock);
-    return 0;
+    f->type = FD_NONE;
+    f->ref = 1;
+
+    initlock(&f->lock, "file");
+
+    return f;
 }
 
 // Increment ref count for file f.
 struct file *filedup(struct file *f) {
-    acquire(&ftable.lock);
+    acquire(&f->lock);
+
     if (f->ref < 1)
         panic("filedup");
     f->ref++;
-    release(&ftable.lock);
+
+    release(&f->lock);
     return f;
 }
 
@@ -51,17 +46,17 @@ struct file *filedup(struct file *f) {
 void fileclose(struct file *f) {
     struct file ff;
 
-    acquire(&ftable.lock);
+    acquire(&f->lock);
     if (f->ref < 1)
         panic("fileclose");
     if (--f->ref > 0) {
-        release(&ftable.lock);
+        release(&f->lock);
         return;
     }
     ff = *f;
     f->ref = 0;
     f->type = FD_NONE;
-    release(&ftable.lock);
+    release(&f->lock);
 
     if (ff.type == FD_PIPE) {
         pipeclose(ff.pipe, ff.writable);
@@ -70,6 +65,8 @@ void fileclose(struct file *f) {
         iput(ff.ip);
         end_op();
     }
+
+    bd_free(f);
 }
 
 // Get metadata about file f.
