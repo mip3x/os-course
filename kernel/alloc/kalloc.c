@@ -15,7 +15,7 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
 void kinit() {
-    bd_init((char*)PGROUNDUP((uint64)end), (void*)PHYSTOP);
+    bd_init((void*)PGROUNDUP((uint64)end), (void*)PHYSTOP);
 }
 
 void freerange(void *pa_start, void *pa_end) {
