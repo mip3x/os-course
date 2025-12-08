@@ -44,6 +44,13 @@ int bit_isset(char *array, int index) {
     return (b & m) == m;
 }
 
+// Invert bit at position index in array
+void bit_invert(char *array, int index) {
+    char b = array[index / 8];          // byte number in array, e.g. 30nd block = 3th byte
+    char m = (1 << (index % 8));        // mask; set 1 in bit position of index
+    array[index / 8] = (b ^ m);
+}
+
 // Set bit at position index in array to 1
 void bit_set(char *array, int index) {
     char b = array[index / 8];
