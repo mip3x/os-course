@@ -14,9 +14,9 @@ static int nsizes; // the number of entries in bd_sizes array
 #define MAXSIZE (nsizes - 1)                  // Largest index in bd_sizes array
 #define BLK_SIZE(k) ((1L << (k)) * LEAF_SIZE) // Size of block at size k
 #define HEAP_SIZE BLK_SIZE(MAXSIZE)
-#define NBLK(k) (1 << (MAXSIZE - k)) // Number of block at size k
+#define NBLK(k) (1 << (MAXSIZE - k))          // Number of blocks at size k
 #define ROUNDUP(n, sz)                                                         \
-    (((((n) - 1) / (sz)) + 1) * (sz)) // Round up to the next multiple of sz
+    (((((n) - 1) / (sz)) + 1) * (sz))         // Round up to the next multiple of sz
 
 typedef struct list Bd_list;
 
@@ -339,4 +339,7 @@ void bd_init(void *base, void *end) {
         printf("free %d %ld\n", free, BLK_SIZE(MAXSIZE) - meta - unavailable);
         panic("bd_init: free mem");
     }
+
+    // calling bd_print() after bd_init()
+    bd_print();
 }
