@@ -422,7 +422,7 @@ uint64 sys_exec(void) {
             argv[i] = 0;
             break;
         }
-        argv[i] = kalloc();
+        argv[i] = kalloc(PGSIZE);
         if (argv[i] == 0)
             goto bad;
         if (fetchstr(uarg, argv[i], PGSIZE) < 0)

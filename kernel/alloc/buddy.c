@@ -349,7 +349,7 @@ void bd_init(void *base, void *end) {
         if (sz / 2 == 0)
             sz = 1;
         else
-            sz /= 2;;
+            sz /= 2;
 
         bd_sizes[k].xor_alloc = p;
         memset(bd_sizes[k].xor_alloc, 0, sz);
