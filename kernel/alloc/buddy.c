@@ -383,7 +383,4 @@ void bd_init(void *base, void *end) {
         printf("free %d %ld\n", free, BLK_SIZE(MAXSIZE) - meta - unavailable);
         panic("bd_init: free mem");
     }
-
-    // calling bd_print() after bd_init()
-    bd_print();
 }

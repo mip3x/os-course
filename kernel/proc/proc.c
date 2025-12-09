@@ -28,6 +28,11 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+// static void proc_lst_free(struct proc *p) {
+//     lst_remove(&p->proc_lst);
+//     kfree(&p->proc_lst);
+// }
+
 // initialize the proc table.
 void procinit(void) {
     initlock(&pid_lock, "nextpid");
@@ -293,15 +298,19 @@ int fork(void) {
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void reparent(struct proc *p) {
-    acquire(&proc_lst_lock);
     struct list *iter;
+    acquire(&proc_lst_lock);
+
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
+        release(&proc_lst_lock);
 
         if (pp->parent == p) {
             pp->parent = initproc;
             wakeup(initproc);
         }
+
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
@@ -362,9 +371,12 @@ int wait(uint64 addr) {
     for (;;) {
         // Scan through table looking for exited children.
         havekids = 0;
+
         acquire(&proc_lst_lock);
+
         for (iter = proc.next; iter != &proc; iter = iter->next) {
             struct proc *pp = (struct proc *)iter;
+            release(&proc_lst_lock);
 
             if (pp->parent == p) {
                 // make sure the child isn't still in exit() or swtch().
@@ -378,18 +390,25 @@ int wait(uint64 addr) {
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
                         release(&pp->lock);
-                        release(&proc_lst_lock);
+
+                        // proc_lst_free(pp);
+
                         release(&wait_lock);
                         return -1;
                     }
                     freeproc(pp);
                     release(&pp->lock);
-                    release(&proc_lst_lock);
+
+                    // proc_lst_free(pp);
+
                     release(&wait_lock);
                     return pid;
                 }
+
                 release(&pp->lock);
             }
+
+            acquire(&proc_lst_lock);
         }
         release(&proc_lst_lock);
 
@@ -551,11 +570,13 @@ void sleep(void *chan, struct spinlock *lk) {
 void wakeup(void *chan) {
     struct proc *p;
 
-    acquire(&proc_lst_lock);
     struct list *iter;
+    acquire(&proc_lst_lock);
 
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         p = (struct proc *)iter;
+        release(&proc_lst_lock);
+
         if (p != myproc()) {
             acquire(&p->lock);
             if (p->state == SLEEPING && p->chan == chan) {
@@ -563,6 +584,8 @@ void wakeup(void *chan) {
             }
             release(&p->lock);
         }
+
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
@@ -574,11 +597,13 @@ void wakeup(void *chan) {
 int kill(int pid) {
     struct proc *p;
 
-    acquire(&proc_lst_lock);
     struct list *iter;
+    acquire(&proc_lst_lock);
 
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         p = (struct proc *)iter;
+        release(&proc_lst_lock);
+
         acquire(&p->lock);
         if (p->pid == pid) {
             p->killed = 1;
@@ -587,10 +612,13 @@ int kill(int pid) {
                 p->state = RUNNABLE;
             }
             release(&p->lock);
+            // proc_lst_free(p);
             release(&proc_lst_lock);
             return 0;
         }
         release(&p->lock);
+
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
@@ -650,11 +678,13 @@ void procdump(void) {
 
     printf("\n");
 
-    acquire(&proc_lst_lock);
     struct list *iter;
+    acquire(&proc_lst_lock);
 
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         p = (struct proc *)iter;
+        release(&proc_lst_lock);
+
         if (p->state == UNUSED)
             continue;
 
@@ -665,6 +695,8 @@ void procdump(void) {
 
         printf("%d %s %s", p->pid, state, p->name);
         printf("\n");
+
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
@@ -705,11 +737,13 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     }
     release(&cur_proc->lock);
 
-    acquire(&proc_lst_lock);
     struct list *iter;
+    acquire(&proc_lst_lock);
 
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         target_proc = (struct proc *)iter;
+        release(&proc_lst_lock);
+
         acquire(&target_proc->lock);
 
         if (pid == target_proc->pid) {
@@ -732,10 +766,11 @@ int dump2(int pid, int register_num, uint64 *return_value) {
             return -1;
         }
         release(&target_proc->lock);
+
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
-
     return -2;
 
 return_register_value:
