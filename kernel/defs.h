@@ -197,7 +197,7 @@ void virtio_disk_intr(void);
 
 // list.c
 void lst_init(struct list *);
-void lst_remove(struct list *);
+void lst_remove(struct list *, struct list *);
 void lst_push(struct list *, void *);
 void *lst_pop(struct list *);
 void lst_print(struct list *);

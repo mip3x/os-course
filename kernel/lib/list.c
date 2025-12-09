@@ -14,20 +14,24 @@
 void lst_init(struct list *lst) {
     lst->next = lst;
     lst->prev = lst;
+
+    lst->size = 0;
 }
 
 int lst_empty(struct list *lst) { return lst->next == lst; }
 
-void lst_remove(struct list *e) {
+void lst_remove(struct list *lst, struct list *e) {
     e->prev->next = e->next;
     e->next->prev = e->prev;
+
+    lst->size--;
 }
 
 void *lst_pop(struct list *lst) {
     if (lst->next == lst)
         panic("lst_pop");
     struct list *p = lst->next;
-    lst_remove(p);
+    lst_remove(lst, p);
     return (void *)p;
 }
 
@@ -37,6 +41,8 @@ void lst_push(struct list *lst, void *p) {
     e->prev = lst;
     lst->next->prev = p;
     lst->next = e;
+
+    lst->size++;
 }
 
 void lst_print(struct list *lst) {

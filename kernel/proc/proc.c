@@ -28,18 +28,20 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-// static void proc_lst_free(struct proc *p) {
-//     lst_remove(&p->proc_lst);
-//     kfree(&p->proc_lst);
-// }
+static void proc_lst_free(struct proc *p) {
+    lst_remove(&proc, &p->proc_lst);
+    kfree(p);
+}
 
 // initialize the proc table.
 void procinit(void) {
     initlock(&pid_lock, "nextpid");
     initlock(&wait_lock, "wait_lock");
-    initlock(&proc_lst_lock, "proc_lst_lock");
+    initlock(&proc_lst_lock, "proc_st_lock");
 
+    acquire(&proc_lst_lock);
     lst_init(&proc);
+    release(&proc_lst_lock);
 }
 
 // Must be called with interrupts disabled,
@@ -135,6 +137,9 @@ static void freeproc(struct proc *p) {
     p->trapframe = 0;
     if (p->pagetable)
         proc_freepagetable(p->pagetable, p->sz);
+    if (p->kstack)
+        kfree((void*)p->kstack);
+
     p->pagetable = 0;
     p->sz = 0;
     p->pid = 0;
@@ -248,6 +253,13 @@ int fork(void) {
     int i, pid;
     struct proc *np;
     struct proc *p = myproc();
+
+    acquire(&proc_lst_lock);
+    if (proc.size > NPROC) {
+        release(&proc_lst_lock);
+        return -1;
+    }
+    release(&proc_lst_lock);
 
     // Allocate process.
     if ((np = allocproc()) == 0) {
@@ -391,7 +403,9 @@ int wait(uint64 addr) {
                                 sizeof(pp->xstate)) < 0) {
                         release(&pp->lock);
 
-                        // proc_lst_free(pp);
+                        acquire(&proc_lst_lock);
+                        proc_lst_free(pp);
+                        release(&proc_lst_lock);
 
                         release(&wait_lock);
                         return -1;
@@ -399,7 +413,9 @@ int wait(uint64 addr) {
                     freeproc(pp);
                     release(&pp->lock);
 
-                    // proc_lst_free(pp);
+                    acquire(&proc_lst_lock);
+                    proc_lst_free(pp);
+                    release(&proc_lst_lock);
 
                     release(&wait_lock);
                     return pid;
@@ -431,7 +447,6 @@ int wait(uint64 addr) {
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
 void scheduler(void) {
-    printf("calling scheduler...\n");
     struct proc *p;
     struct cpu *c = mycpu();
 
@@ -612,8 +627,7 @@ int kill(int pid) {
                 p->state = RUNNABLE;
             }
             release(&p->lock);
-            // proc_lst_free(p);
-            release(&proc_lst_lock);
+
             return 0;
         }
         release(&p->lock);
