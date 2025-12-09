@@ -19,7 +19,7 @@ extern char trampoline[]; // trampoline.S
 pagetable_t kvmmake(void) {
     pagetable_t kpgtbl;
 
-    kpgtbl = (pagetable_t)kalloc();
+    kpgtbl = (pagetable_t)kalloc(PGSIZE);
     memset(kpgtbl, 0, PGSIZE);
 
     // uart registers
@@ -41,9 +41,6 @@ pagetable_t kvmmake(void) {
     // map the trampoline for trap entry/exit to
     // the highest virtual address in the kernel.
     kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
-
-    // allocate and map a kernel stack for each process.
-    proc_mapstacks(kpgtbl);
 
     return kpgtbl;
 }
@@ -84,7 +81,7 @@ pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
         if (*pte & PTE_V) {
             pagetable = (pagetable_t)PTE2PA(*pte);
         } else {
-            if (!alloc || (pagetable = (pde_t *)kalloc()) == 0)
+            if (!alloc || (pagetable = (pde_t *)kalloc(PGSIZE)) == 0)
                 return 0;
             memset(pagetable, 0, PGSIZE);
             *pte = PA2PTE(pagetable) | PTE_V;
@@ -186,7 +183,7 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
 // returns 0 if out of memory.
 pagetable_t uvmcreate() {
     pagetable_t pagetable;
-    pagetable = (pagetable_t)kalloc();
+    pagetable = (pagetable_t)kalloc(PGSIZE);
     if (pagetable == 0)
         return 0;
     memset(pagetable, 0, PGSIZE);
@@ -201,7 +198,7 @@ void uvmfirst(pagetable_t pagetable, uchar *src, uint sz) {
 
     if (sz >= PGSIZE)
         panic("uvmfirst: more than a page");
-    mem = kalloc();
+    mem = kalloc(PGSIZE);
     memset(mem, 0, PGSIZE);
     mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W | PTE_R | PTE_X | PTE_U);
     memmove(mem, src, sz);
@@ -218,7 +215,7 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm) {
 
     oldsz = PGROUNDUP(oldsz);
     for (a = oldsz; a < newsz; a += PGSIZE) {
-        mem = kalloc();
+        mem = kalloc(PGSIZE);
         if (mem == 0) {
             uvmdealloc(pagetable, a, oldsz);
             return 0;
@@ -295,7 +292,7 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
             panic("uvmcopy: page not present");
         pa = PTE2PA(*pte);
         flags = PTE_FLAGS(*pte);
-        if ((mem = kalloc()) == 0)
+        if ((mem = kalloc(PGSIZE)) == 0)
             goto err;
         memmove(mem, (char *)pa, PGSIZE);
         if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
