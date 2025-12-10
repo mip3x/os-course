@@ -388,7 +388,6 @@ int wait(uint64 addr) {
 
         for (iter = proc.next; iter != &proc; iter = iter->next) {
             struct proc *pp = (struct proc *)iter;
-            release(&proc_lst_lock);
 
             if (pp->parent == p) {
                 // make sure the child isn't still in exit() or swtch().
@@ -401,9 +400,9 @@ int wait(uint64 addr) {
                     if (addr != 0 &&
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
+                        freeproc(pp);
                         release(&pp->lock);
 
-                        acquire(&proc_lst_lock);
                         proc_lst_free(pp);
                         release(&proc_lst_lock);
 
@@ -413,7 +412,6 @@ int wait(uint64 addr) {
                     freeproc(pp);
                     release(&pp->lock);
 
-                    acquire(&proc_lst_lock);
                     proc_lst_free(pp);
                     release(&proc_lst_lock);
 
@@ -424,7 +422,6 @@ int wait(uint64 addr) {
                 release(&pp->lock);
             }
 
-            acquire(&proc_lst_lock);
         }
         release(&proc_lst_lock);
 
@@ -617,7 +614,6 @@ int kill(int pid) {
 
     for (iter = proc.next; iter != &proc; iter = iter->next) {
         p = (struct proc *)iter;
-        release(&proc_lst_lock);
 
         acquire(&p->lock);
         if (p->pid == pid) {
@@ -628,11 +624,10 @@ int kill(int pid) {
             }
             release(&p->lock);
 
+            release(&proc_lst_lock);
             return 0;
         }
         release(&p->lock);
-
-        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
