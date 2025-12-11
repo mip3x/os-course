@@ -406,6 +406,11 @@ int wait(uint64 addr) {
 
                 havekids = 1;
                 if (pp->state == ZOMBIE) {
+                    // remove from list before freeing to avoid races with
+                    // concurrent iteration over proc_lst
+                    lst_remove(&proc_lst, &pp->proc_lst);
+                    release(&proc_lst_lock);
+
                     // Found one.
                     pid = pp->pid;
                     if (addr != 0 &&
@@ -413,16 +418,14 @@ int wait(uint64 addr) {
                                 sizeof(pp->xstate)) < 0) {
                         freeproc(pp);
                         release(&pp->lock);
-
-                        release(&proc_lst_lock);
+                        kfree(pp);
 
                         release(&wait_lock);
                         return -1;
                     }
                     freeproc(pp);
                     release(&pp->lock);
-
-                    release(&proc_lst_lock);
+                    kfree(pp);
 
                     release(&wait_lock);
                     return pid;
