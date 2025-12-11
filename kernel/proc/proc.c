@@ -28,11 +28,6 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-static void proc_lst_free(struct proc *p) {
-    lst_remove(&proc_lst, &p->proc_lst);
-    kfree(p);
-}
-
 // initialize the proc table.
 void procinit(void) {
     initlock(&pid_lock, "nextpid");
@@ -85,14 +80,45 @@ int allocpid() {
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc *allocproc(void) {
-    struct proc *p = (struct proc *)kalloc(sizeof(struct proc));
-    if (!p)
-        return 0;
+    struct proc *p = 0;
 
-    memset(p, 0, sizeof(*p));
+    struct list *iter;
+    acquire(&proc_lst_lock);
 
-    initlock(&p->lock, "proc");
-    acquire(&p->lock);
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+        struct proc *candidate = (struct proc *)iter;
+
+        acquire(&candidate->lock);
+        if (candidate->state == UNUSED) {
+            p = candidate;
+            break;
+        }
+        release(&candidate->lock);
+    }
+
+    if (p == 0) { // candidate with UNUSED state not found -> alloc proc struct
+        if (proc_lst.size >= NPROC) {
+            release(&proc_lst_lock);
+            return 0;
+        }
+
+        release(&proc_lst_lock);
+
+        p = (struct proc *)kalloc(sizeof(struct proc));
+        if (!p)
+            return 0;
+
+        memset(p, 0, sizeof(*p));
+
+        initlock(&p->lock, "proc");
+        acquire(&p->lock);
+
+        acquire(&proc_lst_lock);
+        lst_push(&proc_lst, &p->proc_lst);
+        release(&proc_lst_lock);
+    } else { // candidate with UNUSED state found
+        release(&proc_lst_lock);
+    }
 
     p->pid = allocpid();
     p->state = USED;
@@ -223,10 +249,6 @@ void userinit(void) {
     p->state = RUNNABLE;
 
     release(&p->lock);
-
-    acquire(&proc_lst_lock);
-    lst_push(&proc_lst, &p->proc_lst);
-    release(&proc_lst_lock);
 }
 
 // Grow or shrink user memory by n bytes.
@@ -253,13 +275,6 @@ int fork(void) {
     int i, pid;
     struct proc *np;
     struct proc *p = myproc();
-
-    acquire(&proc_lst_lock);
-    if (proc_lst.size > NPROC) {
-        release(&proc_lst_lock);
-        return -1;
-    }
-    release(&proc_lst_lock);
 
     // Allocate process.
     if ((np = allocproc()) == 0) {
@@ -299,10 +314,6 @@ int fork(void) {
     acquire(&np->lock);
     np->state = RUNNABLE;
     release(&np->lock);
-
-    acquire(&proc_lst_lock);
-    lst_push(&proc_lst, &np->proc_lst);
-    release(&proc_lst_lock);
 
     return pid;
 }
@@ -403,7 +414,6 @@ int wait(uint64 addr) {
                         freeproc(pp);
                         release(&pp->lock);
 
-                        proc_lst_free(pp);
                         release(&proc_lst_lock);
 
                         release(&wait_lock);
@@ -412,7 +422,6 @@ int wait(uint64 addr) {
                     freeproc(pp);
                     release(&pp->lock);
 
-                    proc_lst_free(pp);
                     release(&proc_lst_lock);
 
                     release(&wait_lock);
@@ -461,9 +470,9 @@ void scheduler(void) {
 
         for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
             p = (struct proc *)iter;
-            release(&proc_lst_lock);
 
             acquire(&p->lock);
+            release(&proc_lst_lock);
             if (p->state == RUNNABLE) {
                 // Switch to chosen process.  It is the process's job
                 // to release its lock and then reacquire it
@@ -587,16 +596,17 @@ void wakeup(void *chan) {
 
     for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         p = (struct proc *)iter;
+
+        acquire(&p->lock);
         release(&proc_lst_lock);
 
         if (p != myproc()) {
-            acquire(&p->lock);
             if (p->state == SLEEPING && p->chan == chan) {
                 p->state = RUNNABLE;
             }
-            release(&p->lock);
         }
 
+        release(&p->lock);
         acquire(&proc_lst_lock);
     }
 
@@ -616,6 +626,8 @@ int kill(int pid) {
         p = (struct proc *)iter;
 
         acquire(&p->lock);
+        release(&proc_lst_lock);
+
         if (p->pid == pid) {
             p->killed = 1;
             if (p->state == SLEEPING) {
@@ -624,10 +636,10 @@ int kill(int pid) {
             }
             release(&p->lock);
 
-            release(&proc_lst_lock);
             return 0;
         }
         release(&p->lock);
+        acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
