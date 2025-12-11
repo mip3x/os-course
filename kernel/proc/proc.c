@@ -406,12 +406,13 @@ int wait(uint64 addr) {
 
                 havekids = 1;
                 if (pp->state == ZOMBIE) {
+                    // Found one.
+
                     // remove from list before freeing to avoid races with
                     // concurrent iteration over proc_lst
                     lst_remove(&proc_lst, &pp->proc_lst);
                     release(&proc_lst_lock);
 
-                    // Found one.
                     pid = pp->pid;
                     if (addr != 0 &&
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
