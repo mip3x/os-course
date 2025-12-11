@@ -9,7 +9,7 @@
 
 struct cpu cpus[NCPU];
 
-struct list proc;
+struct list proc_lst;
 struct spinlock proc_lst_lock;
 
 struct proc *initproc;
@@ -29,7 +29,7 @@ extern char trampoline[]; // trampoline.S
 struct spinlock wait_lock;
 
 static void proc_lst_free(struct proc *p) {
-    lst_remove(&proc, &p->proc_lst);
+    lst_remove(&proc_lst, &p->proc_lst);
     kfree(p);
 }
 
@@ -40,7 +40,7 @@ void procinit(void) {
     initlock(&proc_lst_lock, "proc_st_lock");
 
     acquire(&proc_lst_lock);
-    lst_init(&proc);
+    lst_init(&proc_lst);
     release(&proc_lst_lock);
 }
 
@@ -225,7 +225,7 @@ void userinit(void) {
     release(&p->lock);
 
     acquire(&proc_lst_lock);
-    lst_push(&proc, &p->proc_lst);
+    lst_push(&proc_lst, &p->proc_lst);
     release(&proc_lst_lock);
 }
 
@@ -255,7 +255,7 @@ int fork(void) {
     struct proc *p = myproc();
 
     acquire(&proc_lst_lock);
-    if (proc.size > NPROC) {
+    if (proc_lst.size > NPROC) {
         release(&proc_lst_lock);
         return -1;
     }
@@ -301,7 +301,7 @@ int fork(void) {
     release(&np->lock);
 
     acquire(&proc_lst_lock);
-    lst_push(&proc, &np->proc_lst);
+    lst_push(&proc_lst, &np->proc_lst);
     release(&proc_lst_lock);
 
     return pid;
@@ -313,7 +313,7 @@ void reparent(struct proc *p) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc.next; iter != &proc; iter = iter->next) {
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
         release(&proc_lst_lock);
 
@@ -386,7 +386,7 @@ int wait(uint64 addr) {
 
         acquire(&proc_lst_lock);
 
-        for (iter = proc.next; iter != &proc; iter = iter->next) {
+        for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
             struct proc *pp = (struct proc *)iter;
 
             if (pp->parent == p) {
@@ -459,7 +459,7 @@ void scheduler(void) {
         struct list *iter;
         acquire(&proc_lst_lock);
 
-        for (iter = proc.next; iter != &proc; iter = iter->next) {
+        for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
             p = (struct proc *)iter;
             release(&proc_lst_lock);
 
@@ -585,7 +585,7 @@ void wakeup(void *chan) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc.next; iter != &proc; iter = iter->next) {
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         p = (struct proc *)iter;
         release(&proc_lst_lock);
 
@@ -612,7 +612,7 @@ int kill(int pid) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc.next; iter != &proc; iter = iter->next) {
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         p = (struct proc *)iter;
 
         acquire(&p->lock);
@@ -690,7 +690,7 @@ void procdump(void) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc.next; iter != &proc; iter = iter->next) {
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         p = (struct proc *)iter;
         release(&proc_lst_lock);
 
@@ -749,7 +749,7 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc.next; iter != &proc; iter = iter->next) {
+    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
         target_proc = (struct proc *)iter;
         release(&proc_lst_lock);
 
