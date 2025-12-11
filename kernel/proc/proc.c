@@ -9,7 +9,7 @@
 
 struct cpu cpus[NCPU];
 
-struct list proc_lst;
+struct list proc_lst_head;
 struct spinlock proc_lst_lock;
 
 struct proc *initproc;
@@ -35,7 +35,7 @@ void procinit(void) {
     initlock(&proc_lst_lock, "proc_st_lock");
 
     acquire(&proc_lst_lock);
-    lst_init(&proc_lst);
+    lst_init(&proc_lst_head);
     release(&proc_lst_lock);
 }
 
@@ -85,7 +85,7 @@ static struct proc *allocproc(void) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         struct proc *candidate = (struct proc *)iter;
 
         acquire(&candidate->lock);
@@ -97,7 +97,7 @@ static struct proc *allocproc(void) {
     }
 
     if (p == 0) { // candidate with UNUSED state not found -> alloc proc struct
-        if (proc_lst.size >= NPROC) {
+        if (proc_lst_head.size >= NPROC) {
             release(&proc_lst_lock);
             return 0;
         }
@@ -114,7 +114,7 @@ static struct proc *allocproc(void) {
         acquire(&p->lock);
 
         acquire(&proc_lst_lock);
-        lst_push(&proc_lst, &p->proc_lst);
+        lst_push(&proc_lst_head, &p->proc_lst_node);
         release(&proc_lst_lock);
     } else { // candidate with UNUSED state found
         release(&proc_lst_lock);
@@ -324,7 +324,7 @@ void reparent(struct proc *p) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
         release(&proc_lst_lock);
 
@@ -397,7 +397,7 @@ int wait(uint64 addr) {
 
         acquire(&proc_lst_lock);
 
-        for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+        for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
             struct proc *pp = (struct proc *)iter;
 
             if (pp->parent == p) {
@@ -410,7 +410,7 @@ int wait(uint64 addr) {
 
                     // remove from list before freeing to avoid races with
                     // concurrent iteration over proc_lst
-                    lst_remove(&proc_lst, &pp->proc_lst);
+                    lst_remove(&proc_lst_head, &pp->proc_lst_node);
                     release(&proc_lst_lock);
 
                     pid = pp->pid;
@@ -472,7 +472,7 @@ void scheduler(void) {
         struct list *iter;
         acquire(&proc_lst_lock);
 
-        for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+        for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
             p = (struct proc *)iter;
 
             acquire(&p->lock);
@@ -598,7 +598,7 @@ void wakeup(void *chan) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         p = (struct proc *)iter;
 
         acquire(&p->lock);
@@ -626,7 +626,7 @@ int kill(int pid) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         p = (struct proc *)iter;
 
         acquire(&p->lock);
@@ -706,7 +706,7 @@ void procdump(void) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         p = (struct proc *)iter;
         release(&proc_lst_lock);
 
@@ -765,7 +765,7 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst.next; iter != &proc_lst; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         target_proc = (struct proc *)iter;
         release(&proc_lst_lock);
 
