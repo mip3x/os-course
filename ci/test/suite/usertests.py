@@ -38,7 +38,7 @@ QUICK_TESTS = [
     Xv6UserTest(name="twochildren", timeout=timedelta(seconds=10)),
     Xv6UserTest(name="forkfork", timeout=timedelta(seconds=3)),
     Xv6UserTest(name="forkforkfork", timeout=timedelta(seconds=8)),
-    Xv6UserTest(name="reparent2", timeout=timedelta(seconds=150)),
+    Xv6UserTest(name="reparent2", timeout=timedelta(seconds=15)),
     Xv6UserTest(name="mem", timeout=timedelta(seconds=5)),
     Xv6UserTest(name="sharedfd", timeout=timedelta(seconds=36)),
     Xv6UserTest(name="fourfiles", timeout=timedelta(seconds=5)),

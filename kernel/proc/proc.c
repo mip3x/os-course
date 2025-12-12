@@ -324,15 +324,25 @@ void reparent(struct proc *p) {
     struct list *iter;
     acquire(&proc_lst_lock);
 
-    for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
+    for (iter = proc_lst_head.next; iter != &proc_lst_head;) {
         struct proc *pp = (struct proc *)iter;
+
+        acquire(&pp->lock);
+        iter = iter->next;
+
         release(&proc_lst_lock);
 
         if (pp->parent == p) {
             pp->parent = initproc;
+
+            release(&pp->lock);
             wakeup(initproc);
+            acquire(&proc_lst_lock);
+
+            continue;
         }
 
+        release(&pp->lock);
         acquire(&proc_lst_lock);
     }
 
