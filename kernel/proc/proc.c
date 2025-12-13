@@ -1,3 +1,4 @@
+#include "kernel/lib/defer_list.h"
 #include "kernel/types.h"
 #include "kernel/lib/list.h"
 #include "kernel/param.h"
@@ -11,6 +12,8 @@ struct cpu cpus[NCPU];
 
 struct list proc_lst_head;
 struct spinlock proc_lst_lock;
+
+struct defer_domain proc_df;
 
 struct proc *initproc;
 
@@ -37,6 +40,8 @@ void procinit(void) {
     acquire(&proc_lst_lock);
     lst_init(&proc_lst_head);
     release(&proc_lst_lock);
+
+    defer_init(&proc_df, "proc_df");
 }
 
 // Must be called with interrupts disabled,
@@ -83,6 +88,7 @@ static struct proc *allocproc(void) {
     struct proc *p = 0;
 
     struct list *iter;
+    defer_enter(&proc_df);
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -99,10 +105,12 @@ static struct proc *allocproc(void) {
     if (p == 0) { // candidate with UNUSED state not found -> alloc proc struct
         if (proc_lst_head.size >= NPROC) {
             release(&proc_lst_lock);
+            defer_exit(&proc_df);
             return 0;
         }
 
         release(&proc_lst_lock);
+        defer_exit(&proc_df);
 
         p = (struct proc *)kalloc(sizeof(struct proc));
         if (!p)
@@ -118,6 +126,7 @@ static struct proc *allocproc(void) {
         release(&proc_lst_lock);
     } else { // candidate with UNUSED state found
         release(&proc_lst_lock);
+        defer_exit(&proc_df);
     }
 
     p->pid = allocpid();
@@ -322,25 +331,23 @@ int fork(void) {
 // Caller must hold wait_lock.
 void reparent(struct proc *p) {
     struct list *iter;
+    defer_enter(&proc_df);
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
-        acquire(&pp->lock);
         release(&proc_lst_lock);
 
         if (pp->parent == p) {
             pp->parent = initproc;
-            release(&pp->lock);
             wakeup(initproc);
-        } else {
-            release(&pp->lock);
         }
 
         acquire(&proc_lst_lock);
     }
 
     release(&proc_lst_lock);
+    defer_exit(&proc_df);
 }
 
 // Exit the current process.  Does not return.
@@ -399,6 +406,7 @@ int wait(uint64 addr) {
         // Scan through table looking for exited children.
         havekids = 0;
 
+        defer_enter(&proc_df);
         acquire(&proc_lst_lock);
 
         for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -421,17 +429,19 @@ int wait(uint64 addr) {
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
                         freeproc(pp);
-                        kfree(pp);
+                        defer_ptr(&proc_df, pp);
                         release(&pp->lock);
 
                         release(&wait_lock);
+                        defer_exit(&proc_df);
                         return -1;
                     }
                     freeproc(pp);
-                    kfree(pp);
+                    defer_ptr(&proc_df, pp);
                     release(&pp->lock);
 
                     release(&wait_lock);
+                    defer_exit(&proc_df);
                     return pid;
                 }
 
@@ -440,6 +450,7 @@ int wait(uint64 addr) {
 
         }
         release(&proc_lst_lock);
+        defer_exit(&proc_df);
 
         // No point waiting if we don't have any children.
         if (!havekids || killed(p)) {
@@ -470,9 +481,12 @@ void scheduler(void) {
         // processes are waiting.
         intr_on();
 
+        defer_reclaim(&proc_df);
+
         int found = 0;
 
         struct list *iter;
+        defer_enter(&proc_df);
         acquire(&proc_lst_lock);
 
         for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -499,6 +513,7 @@ void scheduler(void) {
             acquire(&proc_lst_lock);
         }
         release(&proc_lst_lock);
+        defer_exit(&proc_df);
 
         if (found == 0) {
             // nothing to run; stop running on this core until an interrupt.
@@ -599,6 +614,7 @@ void wakeup(void *chan) {
     struct proc *p;
 
     struct list *iter;
+    defer_enter(&proc_df);
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -618,6 +634,7 @@ void wakeup(void *chan) {
     }
 
     release(&proc_lst_lock);
+    defer_exit(&proc_df);
 }
 
 // Kill the process with the given pid.
@@ -627,6 +644,7 @@ int kill(int pid) {
     struct proc *p;
 
     struct list *iter;
+    defer_enter(&proc_df);
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -642,6 +660,7 @@ int kill(int pid) {
                 p->state = RUNNABLE;
             }
             release(&p->lock);
+            defer_exit(&proc_df);
 
             return 0;
         }
@@ -650,6 +669,7 @@ int kill(int pid) {
     }
 
     release(&proc_lst_lock);
+    defer_exit(&proc_df);
     return -1;
 }
 
@@ -707,6 +727,7 @@ void procdump(void) {
     printf("\n");
 
     struct list *iter;
+    defer_enter(&proc_df);
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -728,6 +749,7 @@ void procdump(void) {
     }
 
     release(&proc_lst_lock);
+    defer_exit(&proc_df);
 }
 
 // Print values of registers s2-s11
