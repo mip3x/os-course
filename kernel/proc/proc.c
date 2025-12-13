@@ -326,11 +326,15 @@ void reparent(struct proc *p) {
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
+        acquire(&pp->lock);
         release(&proc_lst_lock);
 
         if (pp->parent == p) {
             pp->parent = initproc;
+            release(&pp->lock);
             wakeup(initproc);
+        } else {
+            release(&pp->lock);
         }
 
         acquire(&proc_lst_lock);
@@ -399,11 +403,10 @@ int wait(uint64 addr) {
 
         for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
             struct proc *pp = (struct proc *)iter;
+            acquire(&pp->lock);
 
             if (pp->parent == p) {
                 // make sure the child isn't still in exit() or swtch().
-                acquire(&pp->lock);
-
                 havekids = 1;
                 if (pp->state == ZOMBIE) {
                     // Found one.
@@ -432,8 +435,8 @@ int wait(uint64 addr) {
                     return pid;
                 }
 
-                release(&pp->lock);
             }
+            release(&pp->lock);
 
         }
         release(&proc_lst_lock);
