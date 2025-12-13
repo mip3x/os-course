@@ -326,16 +326,11 @@ void reparent(struct proc *p) {
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         struct proc *pp = (struct proc *)iter;
-
-        acquire(&pp->lock);
         release(&proc_lst_lock);
 
         if (pp->parent == p) {
             pp->parent = initproc;
-            release(&pp->lock);
             wakeup(initproc);
-        } else {
-            release(&pp->lock);
         }
 
         acquire(&proc_lst_lock);
@@ -713,8 +708,6 @@ void procdump(void) {
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         p = (struct proc *)iter;
-
-        acquire(&p->lock);
         release(&proc_lst_lock);
 
         if (p->state == UNUSED)
@@ -728,7 +721,6 @@ void procdump(void) {
         printf("%d %s %s", p->pid, state, p->name);
         printf("\n");
 
-        release(&p->lock);
         acquire(&proc_lst_lock);
     }
 
@@ -775,8 +767,9 @@ int dump2(int pid, int register_num, uint64 *return_value) {
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
         target_proc = (struct proc *)iter;
-        acquire(&target_proc->lock);
         release(&proc_lst_lock);
+
+        acquire(&target_proc->lock);
 
         if (pid == target_proc->pid) {
             acquire(&wait_lock);
@@ -785,6 +778,7 @@ int dump2(int pid, int register_num, uint64 *return_value) {
             while (parent) {
                 if (parent == cur_proc) {
                     release(&wait_lock);
+                    release(&proc_lst_lock);
                     goto return_register_value;
                 }
 
@@ -793,10 +787,11 @@ int dump2(int pid, int register_num, uint64 *return_value) {
 
             release(&wait_lock);
             release(&target_proc->lock);
+            release(&proc_lst_lock);
             return -1;
         }
-
         release(&target_proc->lock);
+
         acquire(&proc_lst_lock);
     }
 
