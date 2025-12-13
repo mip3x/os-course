@@ -421,15 +421,15 @@ int wait(uint64 addr) {
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
                         freeproc(pp);
-                        release(&pp->lock);
                         kfree(pp);
+                        release(&pp->lock);
 
                         release(&wait_lock);
                         return -1;
                     }
                     freeproc(pp);
-                    release(&pp->lock);
                     kfree(pp);
+                    release(&pp->lock);
 
                     release(&wait_lock);
                     return pid;
