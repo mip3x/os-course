@@ -419,17 +419,18 @@ int wait(uint64 addr) {
                 if (pp->state == ZOMBIE) {
                     // Found one.
 
-                    // remove from list before freeing to avoid races with
-                    // concurrent iteration over proc_lst
+                    // remove proc struct from list
                     lst_remove(&proc_lst_head, &pp->proc_lst_node);
                     release(&proc_lst_lock);
+
+                    // put proc struct into defer queue; will be freed
+                    defer_ptr(&proc_df, pp);
 
                     pid = pp->pid;
                     if (addr != 0 &&
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
                         freeproc(pp);
-                        defer_ptr(&proc_df, pp);
                         release(&pp->lock);
 
                         release(&wait_lock);
@@ -437,7 +438,6 @@ int wait(uint64 addr) {
                         return -1;
                     }
                     freeproc(pp);
-                    defer_ptr(&proc_df, pp);
                     release(&pp->lock);
 
                     release(&wait_lock);
@@ -481,6 +481,7 @@ void scheduler(void) {
         // processes are waiting.
         intr_on();
 
+        // Free proc structs that nobody requires
         defer_reclaim(&proc_df);
 
         int found = 0;
@@ -775,6 +776,8 @@ int dump2(int pid, int register_num, uint64 *return_value) {
         return -3;
     }
 
+    int demand_defer = 0;
+
     struct proc *cur_proc = myproc();
     struct proc *target_proc;
 
@@ -788,6 +791,10 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     release(&cur_proc->lock);
 
     struct list *iter;
+
+    demand_defer = 1;
+    defer_enter(&proc_df);
+
     acquire(&proc_lst_lock);
 
     for (iter = proc_lst_head.next; iter != &proc_lst_head; iter = iter->next) {
@@ -813,6 +820,7 @@ int dump2(int pid, int register_num, uint64 *return_value) {
             release(&wait_lock);
             release(&target_proc->lock);
             release(&proc_lst_lock);
+            defer_exit(&proc_df);
             return -1;
         }
         release(&target_proc->lock);
@@ -821,6 +829,7 @@ int dump2(int pid, int register_num, uint64 *return_value) {
     }
 
     release(&proc_lst_lock);
+    defer_exit(&proc_df);
     return -2;
 
 return_register_value:
@@ -833,6 +842,8 @@ return_register_value:
     uint64 register_value = *(registers_offset + register_index);
 
     release(&target_proc->lock);
+    if (demand_defer == 1)
+        defer_exit(&proc_df);
 
     if (copyout(cur_proc->pagetable, *return_value, (char *)&register_value,
                 sizeof(uint64)) == -1) {

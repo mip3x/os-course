@@ -29,7 +29,7 @@ void defer_exit(struct defer_domain *d) {
     release(&d->lock);
 }
 
-// Push to defer list object to free (release)
+// Connect ptr with defer_node and push to defer list defer_node to free (release) later
 void defer_ptr(struct defer_domain *d, void *ptr) {
     struct defer_node *node = (struct defer_node*)kalloc(sizeof(struct defer_node));
     if (node == 0)
@@ -41,7 +41,7 @@ void defer_ptr(struct defer_domain *d, void *ptr) {
     release(&d->lock);
 }
 
-// Free (release) all objects that are demand by nobody
+// Free (release) all objects that are not required by anybody
 void defer_reclaim(struct defer_domain *d) {
     for (;;) {
         acquire(&d->lock);
