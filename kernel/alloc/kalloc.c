@@ -14,9 +14,7 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
-void kinit() {
-    bd_init((void*)PGROUNDUP((uint64)end), (void*)PHYSTOP);
-}
+void kinit() { bd_init((void *)PGROUNDUP((uint64)end), (void *)PHYSTOP); }
 
 void freerange(void *pa_start, void *pa_end) {
     char *p;
@@ -29,13 +27,9 @@ void freerange(void *pa_start, void *pa_end) {
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void kfree(void *pa) {
-    bd_free(pa);
-}
+void kfree(void *pa) { bd_free(pa); }
 
 // Allocate arbitrary number of bytes of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
-void *kalloc(uint64 nbytes) {
-    return bd_malloc(PGSIZE);
-}
+void *kalloc(uint64 nbytes) { return bd_malloc(PGSIZE); }

@@ -14,9 +14,9 @@ static int nsizes; // the number of entries in bd_sizes array
 #define MAXSIZE (nsizes - 1)                  // Largest index in bd_sizes array
 #define BLK_SIZE(k) ((1L << (k)) * LEAF_SIZE) // Size of block at size k
 #define HEAP_SIZE BLK_SIZE(MAXSIZE)
-#define NBLK(k) (1 << (MAXSIZE - k))          // Number of blocks at size k
+#define NBLK(k) (1 << (MAXSIZE - k)) // Number of blocks at size k
 #define ROUNDUP(n, sz)                                                         \
-    (((((n) - 1) / (sz)) + 1) * (sz))         // Round up to the next multiple of sz
+    (((((n) - 1) / (sz)) + 1) * (sz)) // Round up to the next multiple of sz
 
 typedef struct list Bd_list;
 
@@ -37,6 +37,34 @@ static Sz_info *bd_sizes;
 static void *bd_base; // start address of memory managed by the buddy allocator
 static struct spinlock lock;
 
+// Debug aid: poison freed blocks to spot use-after-free.
+static const char bd_uaf_sig[] = "spotuaf";
+
+static inline int bd_poison_fits(int k) {
+    return BLK_SIZE(k) >= sizeof(bd_uaf_sig);
+}
+
+static void bd_poison(void *p, int k) {
+    if (!bd_poison_fits(k))
+        return;
+    uint64 off = BLK_SIZE(k) - sizeof(bd_uaf_sig);
+    memmove((char *)p + off, bd_uaf_sig, sizeof(bd_uaf_sig));
+}
+
+static void bd_clear_poison(void *p, int k) {
+    if (!bd_poison_fits(k))
+        return;
+    uint64 off = BLK_SIZE(k) - sizeof(bd_uaf_sig);
+    memset((char *)p + off, 0, sizeof(bd_uaf_sig));
+}
+
+static int bd_poison_intact(void *p, int k) {
+    if (!bd_poison_fits(k))
+        return 1;
+    uint64 off = BLK_SIZE(k) - sizeof(bd_uaf_sig);
+    return memcmp((char *)p + off, bd_uaf_sig, sizeof(bd_uaf_sig)) == 0;
+}
+
 // Return 1 if bit at position index in array is set to 1
 int bit_isset(char *array, int index) {
     char b = array[index / 8];
@@ -46,8 +74,9 @@ int bit_isset(char *array, int index) {
 
 // Invert bit at position index in array
 void bit_invert(char *array, int index) {
-    char b = array[index / 8];          // byte number in array, e.g. 30nd block = 3th byte
-    char m = (1 << (index % 8));        // mask; set 1 in bit position of index
+    char b =
+        array[index / 8]; // byte number in array, e.g. 30nd block = 3th byte
+    char m = (1 << (index % 8)); // mask; set 1 in bit position of index
     array[index / 8] = (b ^ m);
 }
 
@@ -68,9 +97,7 @@ void bit_clear(char *array, int index) {
 // * xor_alloc optimization part *
 // returns pair index for block
 // e.g. for blocks number 0 or 1 we need bit 0
-int get_pair_index(int index) {
-    return index / 2;
-}
+int get_pair_index(int index) { return index / 2; }
 
 // invert pair bit in xor_alloc array
 void pair_bit_invert(char *array, int index) {
@@ -159,6 +186,11 @@ void *bd_malloc(uint64 nbytes) {
 
     // Found a block; pop it and potentially split it.
     char *p = lst_pop(&bd_sizes[k].free);
+    if (!bd_poison_intact(p, k)) {
+        printf("bd: block %p size %ld modified after free (possible UAF)\n", p,
+               BLK_SIZE(k));
+    }
+    bd_clear_poison(p, k);
     pair_bit_invert(bd_sizes[k].xor_alloc, blk_index(k, p));
     for (; k > fk; k--) {
         // split a block at size k and mark one half allocated at size k-1
@@ -166,6 +198,7 @@ void *bd_malloc(uint64 nbytes) {
         char *q = p + BLK_SIZE(k - 1); // p's buddy
         bit_set(bd_sizes[k].split, blk_index(k, p));
         pair_bit_invert(bd_sizes[k - 1].xor_alloc, blk_index(k - 1, p));
+        bd_poison(q, k - 1);
         lst_push(&bd_sizes[k - 1].free, q);
     }
     release(&lock);
@@ -193,11 +226,12 @@ void bd_free(void *p) {
     for (k = size(p); k < MAXSIZE; k++) {
         int bi = blk_index(k, p);
         int buddy = (bi % 2 == 0) ? bi + 1 : bi - 1;
-        pair_bit_invert(bd_sizes[k].xor_alloc, bi);         // free p at size k
+        pair_bit_invert(bd_sizes[k].xor_alloc, bi); // free p at size k
 
         int pair_buddy = get_pair_index(buddy);
-        if (bit_isset(bd_sizes[k].xor_alloc, pair_buddy)) { // is buddy allocated?
-            break;                                 // break out of loop
+        if (bit_isset(bd_sizes[k].xor_alloc,
+                      pair_buddy)) { // is buddy allocated?
+            break;                   // break out of loop
         }
         // budy is free; merge with buddy
         q = addr(k, buddy);
@@ -209,6 +243,7 @@ void bd_free(void *p) {
         // anymore
         bit_clear(bd_sizes[k + 1].split, blk_index(k + 1, p));
     }
+    bd_poison(p, k);
     lst_push(&bd_sizes[k].free, p);
     release(&lock);
 }
@@ -264,10 +299,13 @@ int bd_initfree_pair(int k, int bi, void *bd_left, void *bd_right) {
         void *buddy_addr = addr(k, buddy);
         void *bi_addr = addr(k, bi);
 
-        if (buddy_addr >= bd_left && buddy_addr < bd_right)
-            lst_push(&bd_sizes[k].free, buddy_addr);    // put buddy on free list
-        else
-            lst_push(&bd_sizes[k].free, bi_addr);       // put bi on free list
+        if (buddy_addr >= bd_left && buddy_addr < bd_right) {
+            bd_poison(buddy_addr, k);
+            lst_push(&bd_sizes[k].free, buddy_addr); // put buddy on free list
+        } else {
+            bd_poison(bi_addr, k);
+            lst_push(&bd_sizes[k].free, bi_addr); // put bi on free list
+        }
     }
     return free;
 }
