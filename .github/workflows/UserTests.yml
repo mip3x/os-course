@@ -2,7 +2,7 @@ name: UserTests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, lab-2-exp ]
   pull_request:
     branches: [ main ]
 
