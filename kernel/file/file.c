@@ -19,7 +19,7 @@ void fileinit(void) { }
 
 // Allocate a file structure.
 struct file *filealloc(void) {
-    struct file *f = (struct file*)bd_malloc(sizeof(struct file));
+    struct file *f = (struct file*)kalloc(sizeof(struct file));
     if (!f) return 0;
 
     f->type = FD_NONE;
