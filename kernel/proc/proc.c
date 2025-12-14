@@ -440,6 +440,8 @@ int wait(uint64 addr) {
                     release(&wait_lock);
                     defer_exit(&proc_df);
 
+                    defer_reclaim(&proc_df);
+
                     return copy_ok == 1 ? pid : -1;
                 }
 
