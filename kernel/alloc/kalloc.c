@@ -37,5 +37,5 @@ void kfree(void *pa) {
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *kalloc(uint64 nbytes) {
-    return bd_malloc(PGSIZE);
+    return bd_malloc(nbytes);
 }
