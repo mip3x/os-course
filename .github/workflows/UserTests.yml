@@ -31,6 +31,10 @@ jobs:
         if: ${{ github.head_ref == 'lab-2' }}
         run: sh ./ci/test/run.sh alloctest usertests
 
+      - name: Test Lab 2 Experimental
+        if: ${{ github.head_ref == 'lab-2-experimental' }}
+        run: sh ./ci/test/run.sh usertests
+
       - name: Test Lab 3
         if: ${{ github.head_ref == 'lab-3' }}
         run: sh ./ci/test/run.sh cowtest lazytests usertests
