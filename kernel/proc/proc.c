@@ -423,26 +423,24 @@ int wait(uint64 addr) {
                     lst_remove(&proc_lst_head, &pp->proc_lst_node);
                     release(&proc_lst_lock);
 
-                    // put proc struct into defer queue; will be freed
-                    defer_ptr(&proc_df, pp);
-
                     pid = pp->pid;
+                    int copy_ok = 1;
+
                     if (addr != 0 &&
                         copyout(p->pagetable, addr, (char *)&pp->xstate,
                                 sizeof(pp->xstate)) < 0) {
-                        freeproc(pp);
-                        release(&pp->lock);
-
-                        release(&wait_lock);
-                        defer_exit(&proc_df);
-                        return -1;
+                        copy_ok = 0;
                     }
+
                     freeproc(pp);
+                    // put proc struct into defer queue; will be freed
+                    defer_ptr(&proc_df, pp);
                     release(&pp->lock);
 
                     release(&wait_lock);
                     defer_exit(&proc_df);
-                    return pid;
+
+                    return copy_ok == 1 ? pid : -1;
                 }
 
             }
