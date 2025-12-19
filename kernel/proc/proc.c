@@ -434,21 +434,22 @@ int wait(uint64 addr) {
 
                     freeproc(pp);
                     // put proc struct into defer queue; will be freed
-                    int deferred = defer_ptr(&proc_df, pp);
+                    // int deferred = defer_ptr(&proc_df, pp);
                     release(&pp->lock);
 
                     // if we cannot defer freeing (e.g. out of memory),
                     // keep the struct around for reuse instead of leaking it
-                    if (deferred < 0) {
-                        acquire(&proc_lst_lock);
-                        lst_push(&proc_lst_head, &pp->proc_lst_node);
-                        release(&proc_lst_lock);
-                    }
+                    // if (deferred < 0) {
+                    //     acquire(&proc_lst_lock);
+                    //     lst_push(&proc_lst_head, &pp->proc_lst_node);
+                    //     release(&proc_lst_lock);
+                    // }
 
                     release(&wait_lock);
                     defer_exit(&proc_df);
 
-                    defer_reclaim(&proc_df);
+                    // defer_reclaim(&proc_df);
+                    kfree(pp);
 
                     return copy_ok == 1 ? pid : -1;
                 }
