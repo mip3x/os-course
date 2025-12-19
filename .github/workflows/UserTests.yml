@@ -28,12 +28,8 @@ jobs:
         run: sh ./ci/test/run.sh dumptests dump2tests usertests
       
       - name: Test Lab 2
-        if: ${{ github.head_ref == 'lab-2' }}
+        if: ${{ github.head_ref == 'lab-2' || github.head_ref == 'lab-2-fix' }}
         run: sh ./ci/test/run.sh alloctest usertests
-
-      - name: Test Lab 2 Fix
-        if: ${{ github.head_ref == 'lab-2-fix' }}
-        run: sh ./ci/test/run.sh usertests
 
       - name: Test Lab 3
         if: ${{ github.head_ref == 'lab-3' }}
