@@ -30,15 +30,17 @@ void defer_exit(struct defer_domain *d) {
 }
 
 // Connect ptr with defer_node and push to defer list defer_node to free (release) later
-void defer_ptr(struct defer_domain *d, void *ptr) {
+int defer_ptr(struct defer_domain *d, void *ptr) {
     struct defer_node *node = (struct defer_node*)kalloc(sizeof(struct defer_node));
     if (node == 0)
-        return;
+        return -1;
     node->ptr = ptr;
 
     acquire(&d->lock);
     lst_push(&d->deferred_head, &node->link);
     release(&d->lock);
+
+    return 0;
 }
 
 // Free (release) all objects that are not required by anybody

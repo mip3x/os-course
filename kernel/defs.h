@@ -208,7 +208,7 @@ int lst_empty(struct list *);
 void defer_init(struct defer_domain *, char *);
 void defer_enter(struct defer_domain *);
 void defer_exit(struct defer_domain *);
-void defer_ptr(struct defer_domain *, void *);
+int defer_ptr(struct defer_domain *, void *);
 void defer_reclaim(struct defer_domain *);
 
 // buddy.c

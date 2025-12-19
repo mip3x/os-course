@@ -173,7 +173,7 @@ static void freeproc(struct proc *p) {
     if (p->pagetable)
         proc_freepagetable(p->pagetable, p->sz);
     if (p->kstack)
-        kfree((void*)p->kstack);
+        kfree((void *)p->kstack);
 
     p->pagetable = 0;
     p->sz = 0;
@@ -434,8 +434,16 @@ int wait(uint64 addr) {
 
                     freeproc(pp);
                     // put proc struct into defer queue; will be freed
-                    defer_ptr(&proc_df, pp);
+                    int deferred = defer_ptr(&proc_df, pp);
                     release(&pp->lock);
+
+                    // if we cannot defer freeing (e.g. out of memory),
+                    // keep the struct around for reuse instead of leaking it
+                    if (deferred < 0) {
+                        acquire(&proc_lst_lock);
+                        lst_push(&proc_lst_head, &pp->proc_lst_node);
+                        release(&proc_lst_lock);
+                    }
 
                     release(&wait_lock);
                     defer_exit(&proc_df);
