@@ -445,8 +445,6 @@ int wait(uint64 addr) {
                         release(&proc_lst_lock);
                     }
 
-                    defer_ptr(&proc_df, pp);
-                    release(&pp->lock);
                     release(&wait_lock);
                     defer_exit(&proc_df);
 
