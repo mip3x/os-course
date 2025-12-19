@@ -434,8 +434,13 @@ int wait(uint64 addr) {
 
                     freeproc(pp);
                     // put proc struct into defer queue; will be freed
-                    defer_ptr(&proc_df, pp);
+                    int deferred = defer_ptr(&proc_df, pp);
                     release(&pp->lock);
+
+                    // If we cannot defer freeing (e.g. out of memory),
+                    // free the proc struct right away to avoid leaks.
+                    if (deferred < 0)
+                        kfree(pp);
 
                     release(&wait_lock);
                     defer_exit(&proc_df);
@@ -502,7 +507,10 @@ void scheduler(void) {
 
                 p->state = RUNNING;
                 c->proc = p;
+
+                defer_exit(&proc_df);
                 swtch(&c->context, &p->context);
+                defer_enter(&proc_df);
 
                 // Process is done running for now.
                 // It should have changed its p->state before coming back.
