@@ -437,13 +437,10 @@ int wait(uint64 addr) {
                     int deferred = defer_ptr(&proc_df, pp);
                     release(&pp->lock);
 
-                    // if we cannot defer freeing (e.g. out of memory),
-                    // keep the struct around for reuse instead of leaking it
-                    if (deferred < 0) {
-                        acquire(&proc_lst_lock);
-                        lst_push(&proc_lst_head, &pp->proc_lst_node);
-                        release(&proc_lst_lock);
-                    }
+                    // If we cannot defer freeing (e.g. out of memory),
+                    // free the proc struct right away to avoid leaks.
+                    if (deferred < 0)
+                        kfree(pp);
 
                     release(&wait_lock);
                     defer_exit(&proc_df);
@@ -510,7 +507,10 @@ void scheduler(void) {
 
                 p->state = RUNNING;
                 c->proc = p;
+
+                defer_exit(&proc_df);
                 swtch(&c->context, &p->context);
+                defer_enter(&proc_df);
 
                 // Process is done running for now.
                 // It should have changed its p->state before coming back.
