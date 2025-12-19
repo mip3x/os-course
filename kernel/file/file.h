@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kernel/locking/spinlock.h"
 #include "kernel/types.h"
 #include "kernel/locking/sleeplock.h"
 #include "kernel/file/fs.h"
@@ -13,6 +14,7 @@ struct file {
     struct inode *ip;  // FD_INODE and FD_DEVICE
     uint off;          // FD_INODE
     short major;       // FD_DEVICE
+    struct spinlock lock;
 };
 
 #define major(dev) ((dev) >> 16 & 0xFFFF)

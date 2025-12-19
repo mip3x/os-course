@@ -35,7 +35,9 @@ parser.add_argument('suites',
 
 
 def read_header(qemu: Qemu):
-    prefix = [qemu.readline() for _ in range(7)]
+    prefix = [qemu.readline() for _ in range(10)]
+    prefix = [l for l in prefix if not l.startswith("bd:")]
+    print(prefix)
     assert_eq(prefix[2], "xv6 kernel is booting")
     assert_eq(prefix[3], "")
     assert prefix[4] in (f"hart {i + 1} starting" for i in range(2))

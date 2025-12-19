@@ -13,6 +13,7 @@ OBJS = \
   $K/hw/uart.o \
   $K/ipc/pipe.o \
   $K/lib/list.o \
+  $K/lib/defer_list.o \
   $K/lib/printf.o \
   $K/lib/string.o \
   $K/locking/sleeplock.o \
@@ -163,7 +164,8 @@ UPROGS=\
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
 
--include kernel/*.d user/*.d
+DEPS = $(wildcard kernel/*.d kernel/*/*.d user/*.d user/*/*.d)
+-include $(DEPS)
 
 clean: 
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \

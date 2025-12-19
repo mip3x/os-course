@@ -13,6 +13,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct list;
+struct defer_domain;
 
 // bio.c
 void binit(void);
@@ -65,7 +66,7 @@ void ramdiskintr(void);
 void ramdiskrw(struct buf *);
 
 // kalloc.c
-void *kalloc(void);
+void *kalloc(uint64);
 void kfree(void *);
 void kinit(void);
 
@@ -197,11 +198,18 @@ void virtio_disk_intr(void);
 
 // list.c
 void lst_init(struct list *);
-void lst_remove(struct list *);
+void lst_remove(struct list *, struct list *);
 void lst_push(struct list *, void *);
 void *lst_pop(struct list *);
 void lst_print(struct list *);
 int lst_empty(struct list *);
+
+// df_list.c
+void defer_init(struct defer_domain *, char *);
+void defer_enter(struct defer_domain *);
+void defer_exit(struct defer_domain *);
+void defer_ptr(struct defer_domain *, void *);
+void defer_reclaim(struct defer_domain *);
 
 // buddy.c
 void bd_init(void *, void *);
