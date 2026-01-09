@@ -310,7 +310,7 @@ int page_blocked(pagetable_t pagetable, uint64 va) {
     if ((va % PGSIZE) != 0)
         panic("page_blocked: va not aligned");
     if ((pte = walk(pagetable, va, 0)) == 0)
-        panic("page_blocked: pte should exist");
+        return 0;
     if ((*pte & PTE_B) == 0)
         return 0;
 
@@ -377,10 +377,12 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
             panic("uvmcopy: pte should exist");
         if ((*pte & PTE_V) == 0)
             panic("uvmcopy: page not present");
-        // clear PTE_W for both parent and child
-        *pte &= ~PTE_W;
-        // set PTE_B to show that page is a CoW mapping
-        *pte |= PTE_B;
+        if (*pte & PTE_W) {
+            // clear PTE_W for both parent and child
+            *pte &= ~PTE_W;
+            // set PTE_B to show that page is a CoW mapping
+            *pte |= PTE_B;
+        }
 
         pa = PTE2PA(*pte);
         flags = PTE_FLAGS(*pte);
@@ -426,11 +428,15 @@ int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
         if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
             return -1;
         pa0 = PTE2PA(*pte);
-        if ((*pte & PTE_W) == 0 && page_blocked(pagetable, va0)) {
-            if (uvmremap(pagetable, va0) != 0)
+        if ((*pte & PTE_W) == 0) {
+            if (page_blocked(pagetable, va0)) {
+                if (uvmremap(pagetable, va0) != 0)
+                    return -1;
+                pte = walk(pagetable, va0, 0);
+                pa0 = PTE2PA(*pte);
+            } else {
                 return -1;
-            pte = walk(pagetable, va0, 0);
-            pa0 = PTE2PA(*pte);
+            }
         }
 
         n = PGSIZE - (dstva - va0);
