@@ -199,7 +199,7 @@ void bd_free(void *p) {
         if (bit_isset(bd_sizes[k].xor_alloc, pair_buddy)) { // is buddy allocated?
             break;                                 // break out of loop
         }
-        // budy is free; merge with buddy
+        // buddy is free; merge with buddy
         q = addr(k, buddy);
         lst_remove(&bd_sizes[k].free, q); // remove buddy from free list
         if (buddy % 2 == 0) {
