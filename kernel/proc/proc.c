@@ -35,7 +35,7 @@ struct spinlock wait_lock;
 void procinit(void) {
     initlock(&pid_lock, "nextpid");
     initlock(&wait_lock, "wait_lock");
-    initlock(&proc_lst_lock, "proc_st_lock");
+    initlock(&proc_lst_lock, "proc_lst_lock");
 
     acquire(&proc_lst_lock);
     lst_init(&proc_lst_head);
