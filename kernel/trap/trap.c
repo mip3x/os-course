@@ -61,6 +61,11 @@ void usertrap(void) {
         // need begin of page to remap va to new allocated pa
         uint64 va = PGROUNDDOWN(r_stval());
 
+        if (va >= MAXVA) {
+            setkilled(p);
+            goto check_if_killed;
+        }
+
         if (page_blocked(p->pagetable, va) == 0) {
             printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(),
                 p->pid);
@@ -79,6 +84,7 @@ void usertrap(void) {
         setkilled(p);
     }
 
+check_if_killed:
     if (killed(p))
         exit(-1);
 
