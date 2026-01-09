@@ -25,15 +25,6 @@ void inc_refcount(void *pa) {
     release(&refcount_lock);
 }
 
-void dec_refcount(void *pa) {
-    acquire(&refcount_lock);
-    int refs = refcount[REFIDX(pa)];
-    if (refs <= 0)
-        panic("dec_refcount: refs <= 0");
-    refcount[REFIDX(pa)]--;
-    release(&refcount_lock);
-}
-
 void kinit() {
     bd_init((void*)PGROUNDUP((uint64)end), (void*)PHYSTOP);
     initlock(&refcount_lock, "refcount_lock");
@@ -51,10 +42,14 @@ void freerange(void *pa_start, void *pa_end) {
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void kfree(void *pa) {
-    acquire(&refcount_lock);
-    if (--refcount[REFIDX(pa)] <= 0)
+    if (bd_blk_size(pa) == PGSIZE) {
+        acquire(&refcount_lock);
+        if (--refcount[REFIDX(pa)] <= 0)
+            bd_free(pa);
+        release(&refcount_lock);
+    } else {
         bd_free(pa);
-    release(&refcount_lock);
+    }
 }
 
 // Allocate arbitrary number of bytes of physical memory.
@@ -64,6 +59,7 @@ void *kalloc(uint64 nbytes) {
     void *pa = bd_malloc(nbytes);
     if (!pa)
         return pa;
-    inc_refcount(pa);
+    if (nbytes == PGSIZE)
+        inc_refcount(pa);
     return pa;
 }

@@ -183,6 +183,11 @@ int size(char *p) {
     return 0;
 }
 
+// Find the block size in bytes
+int bd_blk_size(char *p) {
+    return BLK_SIZE(size(p));
+}
+
 // Free memory pointed to by p, which was earlier allocated using
 // bd_malloc.
 void bd_free(void *p) {

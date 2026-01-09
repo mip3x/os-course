@@ -68,7 +68,6 @@ void ramdiskrw(struct buf *);
 
 // kalloc.c
 void inc_refcount(void *);
-void dec_refcount(void *);
 void *kalloc(uint64);
 void kfree(void *);
 void kinit(void);
@@ -219,6 +218,7 @@ int defer_ptr(struct defer_domain *, void *);
 void defer_reclaim(struct defer_domain *);
 
 // buddy.c
+int bd_blk_size(char *);
 void bd_init(void *, void *);
 void bd_free(void *);
 void *bd_malloc(uint64);
