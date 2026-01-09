@@ -276,13 +276,12 @@ void vmprintwalk(pagetable_t pagetable, int level) {
     for (int i = 0; i < 512; i++) {
         pte_t pte = pagetable[i];
         uint64 pa = PTE2PA(pte);
-        if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
-            // this PTE points to a lower-level page table.
+        if (pte & PTE_V) {
             vmprintline(level, i, pte, pa);
-            vmprintwalk((pagetable_t)pa, level + 1);
-        } else if (pte & PTE_V) {
-            // leaf PTE
-            vmprintline(level, i, pte, pa);
+            if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+                // this PTE points to a lower-level page table.
+                vmprintwalk((pagetable_t)pa, level + 1);
+            }
         }
     }
 }
