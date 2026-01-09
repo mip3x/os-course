@@ -143,7 +143,8 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa,
     for (;;) {
         if ((pte = walk(pagetable, a, 1)) == 0)
             return -1;
-        if (*pte & PTE_V)
+        // if (*pte & PTE_V)
+        if ((*pte & PTE_V) && !(*pte & PTE_B))
             panic("mappages: remap");
         *pte = PA2PTE(pa) | perm | PTE_V;
         if (a == last)
@@ -300,6 +301,66 @@ void uvmfree(pagetable_t pagetable, uint64 sz) {
     freewalk(pagetable);
 }
 
+// Checks if page is blocked
+// va MUST be page-aligned
+// returns 1 if blocked, 0 if not
+int page_blocked(pagetable_t pagetable, uint64 va) {
+    pte_t *pte;
+
+    if ((va % PGSIZE) != 0)
+        panic("page_blocked: va not aligned");
+    if ((pte = walk(pagetable, va, 0)) == 0)
+        panic("page_blocked: pte should exist");
+    if ((*pte & PTE_B) == 0)
+        return 0;
+
+    return 1;
+}
+
+// Given a process's page table and va
+// copy non-writable page and remap it
+// to old va (pa is new), set PTE_W
+// va MUST be page-aligned
+// CoW fork() modification part
+int uvmremap(pagetable_t pagetable, uint64 va) {
+    pte_t *pte;
+    uint64 pa;
+    uint flags;
+    char *mem;
+
+    if ((va % PGSIZE) != 0)
+        panic("uvmremap: va not aligned");
+    if ((pte = walk(pagetable, va, 0)) == 0)
+        panic("uvmremap: pte should exist");
+    if ((*pte & PTE_V) == 0)
+        panic("uvmremap: page not present");
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    // set PTE_W
+    flags |= PTE_W;
+    // unset PTE_B
+    flags &= ~PTE_B;
+
+    if ((mem = kalloc(PGSIZE)) == 0)
+        goto err;
+    memmove(mem, (char *)pa, PGSIZE);
+
+    // printf("uvmremap: pa 0x%lx flags 0b", pa);
+    // print_bits(flags, 10);
+
+    if (mappages(pagetable, va, PGSIZE, (uint64)mem, flags) != 0) {
+        kfree(mem);
+        goto err;
+    }
+
+    kfree((void *)pa);
+    return 0;
+
+err:
+    return -1;
+}
+
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the
@@ -318,20 +379,24 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
             panic("uvmcopy: page not present");
         // clear PTE_W for both parent and child
         *pte &= ~PTE_W;
+        // set PTE_B to show that page is a CoW mapping
+        *pte |= PTE_B;
 
         pa = PTE2PA(*pte);
         flags = PTE_FLAGS(*pte);
 
-        printf("uvmcopy: pa 0x%lx flags 0b", pa);
-        print_bits(flags, 10);
+        // printf("uvmcopy: pa 0x%lx flags 0b", pa);
+        // print_bits(flags, 10);
 
         if (mappages(new, i, PGSIZE, (uint64)pa, flags) != 0) {
             goto err;
         }
+        inc_refcount((void *)pa);
     }
     return 0;
 
 err:
+    uvmunmap(new, 0, i / PGSIZE, 0);
     return -1;
 }
 
@@ -358,10 +423,16 @@ int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
         if (va0 >= MAXVA)
             return -1;
         pte = walk(pagetable, va0, 0);
-        if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 ||
-            (*pte & PTE_W) == 0)
+        if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
             return -1;
         pa0 = PTE2PA(*pte);
+        if ((*pte & PTE_W) == 0 && page_blocked(pagetable, va0)) {
+            if (uvmremap(pagetable, va0) != 0)
+                return -1;
+            pte = walk(pagetable, va0, 0);
+            pa0 = PTE2PA(*pte);
+        }
+
         n = PGSIZE - (dstva - va0);
         if (n > len)
             n = len;

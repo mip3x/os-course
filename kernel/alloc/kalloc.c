@@ -14,8 +14,29 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
+// array of reference count of the number of
+// user page tables that refer to page idx
+int refcount[(PHYSTOP - KERNBASE) / PGSIZE];
+struct spinlock refcount_lock;
+
+void inc_refcount(void *pa) {
+    acquire(&refcount_lock);
+    refcount[REFIDX(pa)]++;
+    release(&refcount_lock);
+}
+
+void dec_refcount(void *pa) {
+    acquire(&refcount_lock);
+    int refs = refcount[REFIDX(pa)];
+    if (refs <= 0)
+        panic("dec_refcount: refs <= 0");
+    refcount[REFIDX(pa)]--;
+    release(&refcount_lock);
+}
+
 void kinit() {
     bd_init((void*)PGROUNDUP((uint64)end), (void*)PHYSTOP);
+    initlock(&refcount_lock, "refcount_lock");
 }
 
 void freerange(void *pa_start, void *pa_end) {
@@ -30,12 +51,19 @@ void freerange(void *pa_start, void *pa_end) {
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void kfree(void *pa) {
-    bd_free(pa);
+    acquire(&refcount_lock);
+    if (--refcount[REFIDX(pa)] <= 0)
+        bd_free(pa);
+    release(&refcount_lock);
 }
 
 // Allocate arbitrary number of bytes of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *kalloc(uint64 nbytes) {
-    return bd_malloc(nbytes);
+    void *pa = bd_malloc(nbytes);
+    if (!pa)
+        return pa;
+    inc_refcount(pa);
+    return pa;
 }

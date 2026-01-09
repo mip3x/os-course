@@ -55,6 +55,21 @@ void usertrap(void) {
         intr_on();
 
         syscall();
+    } else if (r_scause() == 13 || r_scause() == 15) {
+        // r_stval - here was failed page access (PAGE FAULT)
+        // getting va = begin of page 
+        // need begin of page to remap va to new allocated pa
+        uint64 va = PGROUNDDOWN(r_stval());
+
+        if (page_blocked(p->pagetable, va) == 0) {
+            printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(),
+                p->pid);
+            printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+            setkilled(p);
+        } else {
+            if (uvmremap(p->pagetable, va) != 0)
+                setkilled(p);
+        }
     } else if ((which_dev = devintr()) != 0) {
         // ok
     } else {
