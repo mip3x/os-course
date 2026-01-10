@@ -61,17 +61,26 @@ void usertrap(void) {
         // need begin of page to remap va to new allocated pa
         uint64 va = PGROUNDDOWN(r_stval());
 
-        if (va >= MAXVA) {
+        if (va >= p->sz || va >= MAXVA) {
+            // invalid va
             setkilled(p);
             goto check_if_killed;
         }
 
-        if (page_blocked(p->pagetable, va) == 0) {
+        if (is_page_to_lazy_alloc(p->pagetable, va) == 1) {
+            // lazy allocation
+            if (uvmlazyalloc(p->pagetable, va, PTE_W) != 0)
+                setkilled(p);
+            goto check_if_killed;
+        }
+
+        if (is_page_blocked(p->pagetable, va) == 0) {
             printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(),
                 p->pid);
             printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
             setkilled(p);
         } else {
+            // CoW
             if (uvmremap(p->pagetable, va) != 0)
                 setkilled(p);
         }

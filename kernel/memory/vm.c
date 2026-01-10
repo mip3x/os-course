@@ -166,10 +166,16 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
         panic("uvmunmap: not aligned");
 
     for (a = va; a < va + npages * PGSIZE; a += PGSIZE) {
-        if ((pte = walk(pagetable, a, 0)) == 0)
-            panic("uvmunmap: walk");
-        if ((*pte & PTE_V) == 0)
-            panic("uvmunmap: not mapped");
+        if ((pte = walk(pagetable, a, 0)) == 0) {
+            // skip because of lazy alloc
+            // panic("uvmunmap: walk");
+            continue;
+        }
+        if ((*pte & PTE_V) == 0) {
+            // skip because of lazy alloc
+            // panic("uvmunmap: not mapped");
+            continue;
+        }
         if (PTE_FLAGS(*pte) == PTE_V)
             panic("uvmunmap: not a leaf");
         if (do_free) {
@@ -203,6 +209,22 @@ void uvmfirst(pagetable_t pagetable, uchar *src, uint sz) {
     memset(mem, 0, PGSIZE);
     mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W | PTE_R | PTE_X | PTE_U);
     memmove(mem, src, sz);
+}
+
+int uvmlazyalloc(pagetable_t pagetable, uint64 va, int xperm) {
+    char *mem;
+
+    if ((mem = kalloc(PGSIZE)) == 0)
+        goto err;
+    memset(mem, 0, PGSIZE);
+    if (mappages(pagetable, va, PGSIZE, (uint64)mem, PTE_R | PTE_U | xperm) != 0) {
+        kfree(mem);
+        goto err;
+    }
+    return 0;
+
+err:
+    return -1;
 }
 
 // Allocate PTEs and physical memory to grow process from oldsz to
@@ -300,14 +322,28 @@ void uvmfree(pagetable_t pagetable, uint64 sz) {
     freewalk(pagetable);
 }
 
-// Checks if page is blocked
+// Checks if page should be lazy allocated
 // va MUST be page-aligned
-// returns 1 if blocked, 0 if not
-int page_blocked(pagetable_t pagetable, uint64 va) {
+// returns 1 if yes, 0 if no
+int is_page_to_lazy_alloc(pagetable_t pagetable, uint64 va) {
     pte_t *pte;
 
     if ((va % PGSIZE) != 0)
-        panic("page_blocked: va not aligned");
+        panic("is_page_to_lazy_alloc: va not aligned");
+    if ((pte = walk(pagetable, va, 0)) == 0 || (*pte & PTE_V) == 0)
+        return 1;
+
+    return 0;
+}
+
+// Checks if page is blocked
+// va MUST be page-aligned
+// returns 1 if blocked, 0 if not
+int is_page_blocked(pagetable_t pagetable, uint64 va) {
+    pte_t *pte;
+
+    if ((va % PGSIZE) != 0)
+        panic("is_page_blocked: va not aligned");
     if ((pte = walk(pagetable, va, 0)) == 0)
         return 0;
     if ((*pte & PTE_B) == 0)
@@ -341,6 +377,13 @@ int uvmremap(pagetable_t pagetable, uint64 va) {
     // unset PTE_B
     flags &= ~PTE_B;
 
+    // only one process uses this page
+    // no need in CoW -> just unlock page
+    if (get_refcount((void *)pa) == 1) {
+        *pte = PA2PTE(pa) | flags;
+        return 0;
+    }
+
     if ((mem = kalloc(PGSIZE)) == 0)
         goto err;
     memmove(mem, (char *)pa, PGSIZE);
@@ -372,10 +415,16 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
     uint flags;
 
     for (i = 0; i < sz; i += PGSIZE) {
-        if ((pte = walk(old, i, 0)) == 0)
-            panic("uvmcopy: pte should exist");
-        if ((*pte & PTE_V) == 0)
-            panic("uvmcopy: page not present");
+        if ((pte = walk(old, i, 0)) == 0) {
+            // skip because of lazy alloc
+            // panic("uvmcopy: pte should exist");
+            continue;
+        }
+        if ((*pte & PTE_V) == 0) {
+            // skip because of lazy alloc
+            // panic("uvmcopy: page not present");
+            continue;
+        }
         if (*pte & PTE_W) {
             // clear PTE_W for both parent and child
             *pte &= ~PTE_W;
@@ -428,7 +477,7 @@ int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
             return -1;
         pa0 = PTE2PA(*pte);
         if ((*pte & PTE_W) == 0) {
-            if (page_blocked(pagetable, va0)) {
+            if (is_page_blocked(pagetable, va0)) {
                 if (uvmremap(pagetable, va0) != 0)
                     return -1;
                 pte = walk(pagetable, va0, 0);
