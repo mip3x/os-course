@@ -424,12 +424,7 @@ int wait(uint64 addr) {
 
                     pid = pp->pid;
                     int copy_ok = 1;
-
-                    if (addr != 0 &&
-                        copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                sizeof(pp->xstate)) < 0) {
-                        copy_ok = 0;
-                    }
+                    int ppxstate = pp->xstate;
 
                     freeproc(pp);
                     // put proc struct into defer queue; will be freed
@@ -445,6 +440,12 @@ int wait(uint64 addr) {
                     defer_exit(&proc_df);
 
                     defer_reclaim(&proc_df);
+
+                    if (addr != 0 &&
+                        copyout(p->pagetable, addr, (char *)&ppxstate,
+                                sizeof(pp->xstate)) < 0) {
+                        copy_ok = 0;
+                    }
 
                     return copy_ok == 1 ? pid : -1;
                 }
