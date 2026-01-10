@@ -5,6 +5,7 @@
 #include "kernel/hw/riscv.h"
 #include "kernel/defs.h"
 #include "kernel/file/fs.h"
+#include "kernel/proc/proc.h"
 
 /*
  * the kernel's page table.
@@ -211,6 +212,7 @@ void uvmfirst(pagetable_t pagetable, uchar *src, uint sz) {
     memmove(mem, src, sz);
 }
 
+// Allocate PTEs and physical memory on Major Page Fault
 int uvmlazyalloc(pagetable_t pagetable, uint64 va, int xperm) {
     char *mem;
 
@@ -320,6 +322,23 @@ void uvmfree(pagetable_t pagetable, uint64 sz) {
     if (sz > 0)
         uvmunmap(pagetable, 0, PGROUNDUP(sz) / PGSIZE, 1);
     freewalk(pagetable);
+}
+
+// Checks if virtual address is accessible
+// sz - size of process memory
+// returns 1 if yes, 0 if no
+int is_va_accessible(pagetable_t pagetable, uint64 sz, uint64 va) {
+    pte_t *pte;
+
+    if (va >= sz || va >= MAXVA)
+        return 0;
+    if ((pte = walk(pagetable, va, 0)) != 0) {
+        if ((*pte & PTE_V) && (*pte & PTE_U) == 0) {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 // Checks if page should be lazy allocated
@@ -472,10 +491,19 @@ int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
         va0 = PGROUNDDOWN(dstva);
         if (va0 >= MAXVA)
             return -1;
+        // check proc sz only if pagetable is owned by the same process
+        if (pagetable == myproc()->pagetable && va0 >= myproc()->sz)
+            return -1;
+        if (is_page_to_lazy_alloc(pagetable, va0) == 1) {
+            if (uvmlazyalloc(pagetable, va0, PTE_W) != 0) 
+                return -1;
+        }
         pte = walk(pagetable, va0, 0);
         if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
             return -1;
         pa0 = PTE2PA(*pte);
+
+        // check if CoW scenario
         if ((*pte & PTE_W) == 0) {
             if (is_page_blocked(pagetable, va0)) {
                 if (uvmremap(pagetable, va0) != 0)
@@ -507,6 +535,12 @@ int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
 
     while (len > 0) {
         va0 = PGROUNDDOWN(srcva);
+        if (is_va_accessible(pagetable, myproc()->sz, va0) == 0)
+            return -1;
+        if (is_page_to_lazy_alloc(pagetable, va0) == 1) {
+            if (uvmlazyalloc(pagetable, va0, PTE_W) != 0) 
+                return -1;
+        }
         pa0 = walkaddr(pagetable, va0);
         if (pa0 == 0)
             return -1;
@@ -532,6 +566,12 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
 
     while (got_null == 0 && max > 0) {
         va0 = PGROUNDDOWN(srcva);
+        if (is_va_accessible(pagetable, myproc()->sz, va0) == 0)
+            return -1;
+        if (is_page_to_lazy_alloc(pagetable, va0) == 1) {
+            if (uvmlazyalloc(pagetable, va0, PTE_W) != 0) 
+                return -1;
+        }
         pa0 = walkaddr(pagetable, va0);
         if (pa0 == 0)
             return -1;

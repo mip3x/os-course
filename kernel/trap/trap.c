@@ -61,7 +61,7 @@ void usertrap(void) {
         // need begin of page to remap va to new allocated pa
         uint64 va = PGROUNDDOWN(r_stval());
 
-        if (va >= p->sz || va >= MAXVA) {
+        if (is_va_accessible(p->pagetable, p->sz, va) == 0) {
             // invalid va
             setkilled(p);
             goto check_if_killed;

@@ -178,6 +178,7 @@ void uvmfirst(pagetable_t, uchar *, uint);
 int uvmlazyalloc(pagetable_t, uint64, int);
 uint64 uvmalloc(pagetable_t, uint64, uint64, int);
 uint64 uvmdealloc(pagetable_t, uint64, uint64);
+int is_va_accessible(pagetable_t, uint64, uint64);
 int is_page_to_lazy_alloc(pagetable_t, uint64);
 int is_page_blocked(pagetable_t, uint64);
 int uvmremap(pagetable_t, uint64);
