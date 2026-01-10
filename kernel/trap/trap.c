@@ -74,16 +74,17 @@ void usertrap(void) {
             goto check_if_killed;
         }
 
-        if (is_page_blocked(p->pagetable, va) == 0) {
-            printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(),
-                p->pid);
-            printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
-            setkilled(p);
-        } else {
+        if (is_page_blocked(p->pagetable, va) == 1) {
             // CoW
             if (uvmremap(p->pagetable, va) != 0)
                 setkilled(p);
-        }
+            goto check_if_killed;
+        } 
+
+        printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(),
+            p->pid);
+        printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+        setkilled(p);
     } else if ((which_dev = devintr()) != 0) {
         // ok
     } else {
