@@ -19,6 +19,14 @@ extern char end[]; // first address after kernel.
 int refcount[(PHYSTOP - KERNBASE) / PGSIZE];
 struct spinlock refcount_lock;
 
+int get_refcount(void *pa) {
+    acquire(&refcount_lock);
+    int count = refcount[REFIDX(pa)];
+    release(&refcount_lock);
+
+    return count;
+}
+
 void inc_refcount(void *pa) {
     acquire(&refcount_lock);
     refcount[REFIDX(pa)]++;
