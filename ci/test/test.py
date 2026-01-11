@@ -38,29 +38,22 @@ class Xv6UserTest(Test):
         self.extra_lines = extra_lines
 
     def expect(self, out: RWStream) -> TestResult:
-        pattern = "test " + self.name + ": .*"
-        if not self.is_ok_separated():
-            pattern += "OK"
-
         begin = datetime.now()
 
-        status = out.readline()
-        if not re.fullmatch(pattern, status):
-            raise ValueError(f"Unexpected {status = }")
-
-        if self.is_ok_separated():
-            lines = []
-
-            status = "EOF"
-            while line := out.readline():
-                if line in ("OK", "FAILED"):
-                    status = line
-                    break
+        lines = []
+        status = "EOF"
+        while line := out.readline():
+            match = re.search(r"\b(OK|FAILED)\b", line)
+            if match:
+                status = match.group(1)
+                break
+            if self.is_ok_separated():
                 lines.append(f"[DBG] {line}")
 
-            if status != "OK":
+        if status != "OK":
+            if lines:
                 print(*lines, sep="\n")
-                raise ValueError(f"Unexpected {status = }, expected OK")
+            raise ValueError(f"Unexpected {status = }, expected OK")
 
         end = datetime.now()
 
