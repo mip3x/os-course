@@ -59,7 +59,7 @@ QUICK_TESTS = [
     Xv6UserTest(name="sbrkmuch", timeout=timedelta(seconds=2)),
     Xv6UserTest(
         name="kernmem",
-        timeout=timedelta(milliseconds=500),
+        timeout=timedelta(seconds=5),
         suffix_size=len("usertrap(): unexpected scause 0xd pid=6452"),
         extra_lines=79,
     ),

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kernel/hw/riscv.h"
 #include "kernel/types.h"
 
 struct buf;
@@ -66,6 +67,8 @@ void ramdiskintr(void);
 void ramdiskrw(struct buf *);
 
 // kalloc.c
+int get_refcount(void *);
+void inc_refcount(void *);
 void *kalloc(uint64);
 void kfree(void *);
 void kinit(void);
@@ -86,6 +89,7 @@ int pipewrite(struct pipe *, uint64, int);
 int printf(char *, ...) __attribute__((format(printf, 1, 2)));
 void panic(char *) __attribute__((noreturn));
 void printfinit(void);
+void print_bits(uint x, int n);
 
 // proc.c
 int cpuid(void);
@@ -164,14 +168,20 @@ void uartputc_sync(int);
 int uartgetc(void);
 
 // vm.c
+void vmprint(pagetable_t);
 void kvminit(void);
 void kvminithart(void);
 void kvmmap(pagetable_t, uint64, uint64, uint64, int);
 int mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t uvmcreate(void);
 void uvmfirst(pagetable_t, uchar *, uint);
+int uvmlazyalloc(pagetable_t, uint64, int);
 uint64 uvmalloc(pagetable_t, uint64, uint64, int);
 uint64 uvmdealloc(pagetable_t, uint64, uint64);
+int is_va_accessible(pagetable_t, uint64, uint64);
+int is_page_to_lazy_alloc(pagetable_t, uint64);
+int is_page_blocked(pagetable_t, uint64);
+int uvmremap(pagetable_t, uint64);
 int uvmcopy(pagetable_t, pagetable_t, uint64);
 void uvmfree(pagetable_t, uint64);
 void uvmunmap(pagetable_t, uint64, uint64, int);
@@ -212,6 +222,7 @@ int defer_ptr(struct defer_domain *, void *);
 void defer_reclaim(struct defer_domain *);
 
 // buddy.c
+int bd_blk_size(char *);
 void bd_init(void *, void *);
 void bd_free(void *);
 void *bd_malloc(uint64);

@@ -183,6 +183,11 @@ int size(char *p) {
     return 0;
 }
 
+// Find the block size in bytes
+int bd_blk_size(char *p) {
+    return BLK_SIZE(size(p));
+}
+
 // Free memory pointed to by p, which was earlier allocated using
 // bd_malloc.
 void bd_free(void *p) {
@@ -199,7 +204,7 @@ void bd_free(void *p) {
         if (bit_isset(bd_sizes[k].xor_alloc, pair_buddy)) { // is buddy allocated?
             break;                                 // break out of loop
         }
-        // budy is free; merge with buddy
+        // buddy is free; merge with buddy
         q = addr(k, buddy);
         lst_remove(&bd_sizes[k].free, q); // remove buddy from free list
         if (buddy % 2 == 0) {

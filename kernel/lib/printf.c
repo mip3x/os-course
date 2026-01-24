@@ -168,3 +168,10 @@ void printfinit(void) {
     initlock(&pr.lock, "pr");
     pr.locking = 1;
 }
+
+// print n bits from binary interpretation of x 
+void print_bits(uint x, int n) {
+    for (int i = n - 1; i >= 0; i--)
+        printf("%d", (x >> i) & 1);
+    printf("\n");
+}

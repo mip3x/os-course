@@ -35,7 +35,7 @@ struct spinlock wait_lock;
 void procinit(void) {
     initlock(&pid_lock, "nextpid");
     initlock(&wait_lock, "wait_lock");
-    initlock(&proc_lst_lock, "proc_st_lock");
+    initlock(&proc_lst_lock, "proc_lst_lock");
 
     acquire(&proc_lst_lock);
     lst_init(&proc_lst_head);
@@ -268,9 +268,8 @@ int growproc(int n) {
 
     sz = p->sz;
     if (n > 0) {
-        if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
-            return -1;
-        }
+        // lazy allocation
+        sz += n;
     } else if (n < 0) {
         sz = uvmdealloc(p->pagetable, sz, sz + n);
     }
@@ -425,12 +424,7 @@ int wait(uint64 addr) {
 
                     pid = pp->pid;
                     int copy_ok = 1;
-
-                    if (addr != 0 &&
-                        copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                sizeof(pp->xstate)) < 0) {
-                        copy_ok = 0;
-                    }
+                    int ppxstate = pp->xstate;
 
                     freeproc(pp);
                     // put proc struct into defer queue; will be freed
@@ -446,6 +440,12 @@ int wait(uint64 addr) {
                     defer_exit(&proc_df);
 
                     defer_reclaim(&proc_df);
+
+                    if (addr != 0 &&
+                        copyout(p->pagetable, addr, (char *)&ppxstate,
+                                sizeof(pp->xstate)) < 0) {
+                        copy_ok = 0;
+                    }
 
                     return copy_ok == 1 ? pid : -1;
                 }
