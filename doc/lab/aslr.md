@@ -24,20 +24,20 @@ int main(void) {
 
 Результат запуска программы в `xv6`:
 ```
-$ noaslrcheck
-exec noaslrcheck
+$ aslrcheck
+exec aslrcheck
 code main:   0x0000000000000000
 data global: 0x0000000000001000
 stack local: 0x0000000000003FAC
 heap malloc: 0x0000000000013FF0
-$ noaslrcheck
-exec noaslrcheck
+$ aslrcheck
+exec aslrcheck
 code main:   0x0000000000000000
 data global: 0x0000000000001000
 stack local: 0x0000000000003FAC
 heap malloc: 0x0000000000013FF0
-$ noaslrcheck
-exec noaslrcheck
+$ aslrcheck
+exec aslrcheck
 code main:   0x0000000000000000
 data global: 0x0000000000001000
 stack local: 0x0000000000003FAC

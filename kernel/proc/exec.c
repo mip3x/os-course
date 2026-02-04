@@ -28,6 +28,11 @@ int exec(char *path, char **argv) {
     pagetable_t pagetable = 0, oldpagetable;
     struct proc *p = myproc();
 
+#ifdef KDEBUG
+    // print out binary name
+    printf("exec %s\n", path);
+#endif
+
     begin_op();
 
     if ((ip = namei(path)) == 0) {
