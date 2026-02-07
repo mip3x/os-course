@@ -190,6 +190,10 @@ QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nogr
 QEMUOPTS += -global virtio-mmio.force-legacy=false
 QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+# adding random number generator (RNG) from host as a seed
+QEMUOPTS += -object rng-random,filename=/dev/urandom,id=rng0
+QEMUOPTS += -device virtio-rng-device,rng=rng0,bus=virtio-mmio-bus.1
+# QEMUOPTS += -machine dumpdtb=virt.dtb
 
 qemu: $K/kernel fs.img
 	$(QEMU) $(QEMUOPTS)
