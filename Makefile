@@ -29,6 +29,7 @@ OBJS = \
   $K/trap/trampoline.o \
   $K/trap/trap.o \
   $K/virt/virtio_disk.o \
+  $K/virt/virtio_rng.o \
   $K/alloc/buddy.o \
   $K/alloc/kalloc.o \
   $K/log.o
