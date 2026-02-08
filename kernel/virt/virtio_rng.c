@@ -7,14 +7,10 @@
 //
 
 #include "kernel/types.h"
-#include "kernel/hw/riscv.h"
 #include "kernel/defs.h"
 #include "kernel/param.h"
 #include "kernel/hw/memlayout.h"
 #include "kernel/locking/spinlock.h"
-#include "kernel/locking/sleeplock.h"
-#include "kernel/file/fs.h"
-#include "kernel/file/buf.h"
 #include "kernel/virt/virtio.h"
 
 // the address of virtio mmio register r.
@@ -22,6 +18,10 @@
 
 // https://elixir.bootlin.com/linux/v6.18.6/source/include/uapi/linux/virtio_ids.h#L35
 #define VIRTIO_ID_RNG 4
+
+// True Random Number Generator seed
+// true because we get it from host (assuming working in qemu)
+static uint64 rng_seed;
 
 struct virtio_rng_queue {
     struct virtq_desc *desc;
@@ -33,8 +33,24 @@ struct virtio_rng_queue {
 static struct rng {
     struct virtio_rng_queue seed_queue;
     struct spinlock rng_lock;
-    uint64 data;
+    char is_request_done;
 } rng;
+
+// mark a descriptor as free
+static void free_desc(int i) {
+    if (i >= NUM)
+        panic("free_desc 1");
+    if (rng.seed_queue.is_free)
+        panic("free_desc 2");
+
+    rng.seed_queue.desc[i].addr = 0;
+    rng.seed_queue.desc[i].len = 0;
+    rng.seed_queue.desc[i].flags = 0;
+    rng.seed_queue.desc[i].next = 0;
+    rng.seed_queue.is_free = 1;
+
+    wakeup(&rng.seed_queue.is_free);
+}
 
 void virtio_rng_init(void) {
     uint32 status = 0;
@@ -82,18 +98,18 @@ void virtio_rng_init(void) {
     uint32 max = *R1(VIRTIO_MMIO_QUEUE_NUM_MAX);
     if (max == 0)
         panic("virtio rng has no queue 0");
-    if (max < NUM)
+    if (max < 1)
         panic("virtio rng max queue too short");
 
     // allocate and zero queue memory.
-    rng.seed_queue.desc = kalloc(PGSIZE);
-    rng.seed_queue.avail = kalloc(PGSIZE);
-    rng.seed_queue.used = kalloc(PGSIZE);
+    rng.seed_queue.desc = kalloc(sizeof(struct virtq_desc));
+    rng.seed_queue.avail = kalloc(sizeof(struct virtq_avail));
+    rng.seed_queue.used = kalloc(sizeof(struct virtq_used));
     if (!rng.seed_queue.desc || !rng.seed_queue.avail || !rng.seed_queue.used)
         panic("virtio rng kalloc");
-    memset(rng.seed_queue.desc, 0, PGSIZE);
-    memset(rng.seed_queue.avail, 0, PGSIZE);
-    memset(rng.seed_queue.used, 0, PGSIZE);
+    memset(rng.seed_queue.desc, 0, sizeof(struct virtq_desc));
+    memset(rng.seed_queue.avail, 0, sizeof(struct virtq_avail));
+    memset(rng.seed_queue.used, 0, sizeof(struct virtq_used));
 
     // set queue size.
     *R1(VIRTIO_MMIO_QUEUE_NUM) = 0x1;
@@ -119,7 +135,53 @@ void virtio_rng_init(void) {
     // plic.c and trap.c arrange for interrupts from VIRTIO0_IRQ.
 }
 
-void virtio_rng_intr() {
+void virtio_rng_request_seed(void) {
+    void *buf = kalloc(sizeof(uint64));
+    if (!buf)
+        panic("virtio rng kalloc buf");
+    memset(buf, 0, sizeof(uint64));
+
     acquire(&rng.rng_lock);
+
+    // the only one descriptor
+    int idx = 0;
+
+    // mark seed_queue busy
+    if (rng.seed_queue.is_free != 1) {
+        while (rng.seed_queue.is_free != 1) {
+            __sync_synchronize();
+        }
+    }
+    rng.seed_queue.is_free = 0;
+
+    struct virtq_desc *desc = &rng.seed_queue.desc[idx];
+    desc->addr = (uint64)buf;
+    desc->len = sizeof(uint64);
+    desc->flags = VRING_DESC_F_WRITE;
+    desc->next = 0;
+
+    rng.seed_queue.avail->ring[rng.seed_queue.avail->idx] = idx;
+    __sync_synchronize();
+
+    rng.seed_queue.avail->idx++;
+    __sync_synchronize();
+
+    *R1(VIRTIO_MMIO_QUEUE_NOTIFY) = 0; // value is queue number
+
+    // Wait for device to say request is finished 
+    while (rng.seed_queue.used->idx == 0) {
+        __sync_synchronize();
+    }
+
+    // assign to variable buf value
+    rng_seed = *((uint64*)buf);
+
+#ifdef KDEBUG
+    printf("virtio_rng_request_seed: rng_seed = 0x%lx\n", rng_seed);
+#endif
+
+    free_desc(0);
+    kfree(buf);
+
     release(&rng.rng_lock);
 }

@@ -26,7 +26,11 @@ void main() {
         iinit();            // inode table
         fileinit();         // file table
         virtio_disk_init(); // emulated hard disk
-        virtio_rng_init();  // true random seed from host
+
+        // true random seed from host
+        virtio_rng_init();
+        virtio_rng_request_seed();
+
         userinit();         // first user process
         __sync_synchronize();
         started = 1;

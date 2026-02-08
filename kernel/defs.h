@@ -205,7 +205,7 @@ void virtio_disk_intr(void);
 
 // virtio_rng.c
 void virtio_rng_init(void);
-void virtio_rng_intr(void);
+void virtio_rng_request_seed(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x) / sizeof((x)[0]))
