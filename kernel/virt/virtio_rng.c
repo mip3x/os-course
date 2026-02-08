@@ -176,7 +176,7 @@ void virtio_rng_request_seed(void) {
     // assign to variable buf value
     rng_seed = *((uint64*)buf);
 
-#ifdef KDEBUG
+#if KDEBUG == 1
     printf("virtio_rng_request_seed: rng_seed = 0x%lx\n", rng_seed);
 #endif
 

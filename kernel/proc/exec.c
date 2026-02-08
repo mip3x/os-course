@@ -28,7 +28,7 @@ int exec(char *path, char **argv) {
     pagetable_t pagetable = 0, oldpagetable;
     struct proc *p = myproc();
 
-#ifdef KDEBUG
+#if KDEBUG == 1
     // print out binary name
     printf("exec %s\n", path);
 #endif
