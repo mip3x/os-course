@@ -35,6 +35,9 @@ int exec(char *path, char **argv) {
 
     begin_op();
 
+    // get randomize_va_space flag
+    uint8 randomize_va_space = 1; // TODO make file-flag
+
     if ((ip = namei(path)) == 0) {
         end_op();
         return -1;
@@ -78,12 +81,14 @@ int exec(char *path, char **argv) {
     p = myproc();
     uint64 oldsz = p->sz;
 
-    // Allocate some pages at the next page boundary.
-    // Make the first inaccessible as a stack guard.
-    // Use the rest as the user stack.
+    // Allocate random number of pages at the next page boundary.
+    // Make the last - 1 inaccessible as a stack guard.
+    // Use the last as the user stack.
     sz = PGROUNDUP(sz);
+    // page-level randomization from 1 to 256 pages
+    uint64 stack_offset = randomize_va_space ? get_random(1, 257) : 0;
     uint64 sz1;
-    if ((sz1 = uvmalloc(pagetable, sz, sz + (USERSTACK + 1) * PGSIZE, PTE_W)) ==
+    if ((sz1 = uvmalloc(pagetable, sz, sz + (stack_offset + USERSTACK + 1) * PGSIZE, PTE_W)) ==
         0)
         goto bad;
     sz = sz1;
