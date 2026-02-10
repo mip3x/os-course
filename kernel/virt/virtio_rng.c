@@ -19,10 +19,6 @@
 // https://elixir.bootlin.com/linux/v6.18.6/source/include/uapi/linux/virtio_ids.h#L35
 #define VIRTIO_ID_RNG 4
 
-// True Random Number Generator seed
-// true because we get it from host (assuming working in qemu)
-static uint64 rng_seed;
-
 struct virtio_rng_queue {
     struct virtq_desc *desc;
     struct virtq_avail *avail;
@@ -48,8 +44,6 @@ static void free_desc(int i) {
     rng.seed_queue.desc[i].flags = 0;
     rng.seed_queue.desc[i].next = 0;
     rng.seed_queue.is_free = 1;
-
-    wakeup(&rng.seed_queue.is_free);
 }
 
 void virtio_rng_init(void) {
@@ -174,10 +168,14 @@ void virtio_rng_request_seed(void) {
     }
 
     // assign to variable buf value
-    rng_seed = *((uint64*)buf);
+    acquire(&kernel_seed_lock);
+    kernel_seed = *((uint64*)buf);
+    release(&kernel_seed_lock);
 
 #if KDEBUG == 1
-    printf("virtio_rng_request_seed: rng_seed = 0x%lx\n", rng_seed);
+    acquire(&kernel_seed_lock);
+    printf("virtio_rng_request_seed: kernel_seed = 0x%lx\n", kernel_seed);
+    release(&kernel_seed_lock);
 #endif
 
     free_desc(0);
