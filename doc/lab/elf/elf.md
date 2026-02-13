@@ -9,14 +9,16 @@
 - [Заголовки секций](#Заголовки-секций)
 - [Заголовки сегментов (заголовки программ)](#Заголовки-сегментов-заголовки-программ)
     - [Структура `Program Header`'а](#Структура-Program-Headerа)
+- [Символы](#Символы)
 
 ## Ресурсы
 
 1) [Подробное видео на тему](https://youtu.be/nC1U1LJQL8o?si=a_rvF1k9vZImVYbV)
-2) [Хорошая статья по структурам `ELF`](https://tmpout.sh/4/12.html)
+2) [Статья по структурам `ELF`](https://tmpout.sh/4/12.html)
 3) [Исходный код описания структур из ядра](https://elixir.bootlin.com/linux/v6.18.6/source/include/uapi/linux/elf.h)
 4) [man-страница](https://man7.org/linux/man-pages/man5/elf.5.html)
 5) [Спецификация `ELF`](https://refspecs.linuxfoundation.org/elf/elf.pdf)
+6) [Курс CS 361 (в начале есть полезные видео по символам, ELF, линковке, PIC, GOT, PLT и т.д.)](https://youtube.com/playlist?list=PLhy9gU5W1fvUND_5mdpbNVHC1WCIaABbP&si=sNfhM18q1MtCw_a6)
 
 ## Основные сущности
 
@@ -70,7 +72,7 @@ typedef struct {
 
 ## Заголовки секций
 
-Разделы кода и данных, из которых состоит программа. Внутри `ELF`'а описывающие структуры секций находятся в массиве друг за другом, их смещение в файле определяет поле `e_shoff`, размер - `e_shentsize`, количество - `e_shnum`.
+Разделы кода и данных, из которых состоит программа. Внутри `ELF`'а описывающие структуры секций находятся в массиве друг за другом, их смещение в файле определяет поле `e_shoff`, размер - `e_shentsize`, количество - `e_shnum`. В выводе `readelf -h` обозначены как `section headers`.
 
 Секции используются во время линковки, во время исполнения - нет.
 
@@ -188,13 +190,21 @@ SHT_DYNSYM          - 11
 
 > Some sections hold a table of fixed-sized entries, such as a symbol table. For such a section, this member gives the size in bytes for each entry. This member contains zero if the section does not hold a table of fixed-size entries.
 
-Получить описание секций можно с помощью вызова программы `readelf` с флагами `--sections/-S`.
-
 После этапа компоновки все эти поля не имеют более никакой ценности, поэтому присутствие раздела заголовков секций внутри исполняемого файла не является обязательным
+
+### Типы секций
+
+[Типы секций](./sections.png)
+
+Подробное объяснение того, что содержит каждая из секций, будет дано в [разделе про символы](#разбиение-на-секции), потому что на данный момент недостаточно понятно, какие **конкретно** символы будут размещаться в каждой из секций
+
+### Дополнительно
+
+Получить описание секций можно с помощью вызова программы `readelf` с флагами `--sections/-S`.
 
 ## Заголовки сегментов (заголовки программ)
 
-Содержат информацию о сегментах, которые необходимо загрузить в память. Находятся сразу же после `ELF`-заголовка. Каждый сегмент определён заголовком `Program Header`. Все эти `PH`'ы идут подряд внутри `ELF`, поле `e_phoff` содержит сдвиг начала этого массива `PH` внутри `ELF`. Полу `e_phentsize` определяет размер одного такого `PH`, `e_phnum` - их количество.
+Содержат информацию о сегментах, которые необходимо загрузить в память. Находятся сразу же после `ELF`-заголовка. Каждый сегмент определён заголовком `Program Header`. Все эти `PH`'ы идут подряд внутри `ELF`, поле `e_phoff` содержит сдвиг начала этого массива `PH` внутри `ELF`. Полу `e_phentsize` определяет размер одного такого `PH`, `e_phnum` - их количество. В выводе `readelf -h` обозначены как `program headers`.
 
 ![`Program Headers`](./program_headers.png)
 
@@ -239,3 +249,221 @@ PT_TLS          - 7 - THREAD LOCAL STORAGE INFORMATION
 `p_align` определяет выравнивание
 
 Получить описание сегментов можно с помощью вызова программы `readelf` с флагами `--segments/-l`.
+
+## Символы
+
+Разберём следующую программу (`static-example.c`):
+
+```c
+#include <stdio.h>
+
+int not_defined_here;
+char message[] = "hello_world";
+static int invocations = 0;
+
+void hello_world(int increment) {
+    static int first_time = 0;
+    if (increment >= 0) {
+        puts(message);
+        invocations++;
+        fprintf(stderr, "I have printed to the screen %d times.\n", invocations);
+
+        hello_world(increment - 1);
+    }
+
+    if (first_time == 0) {
+        fprintf(stderr, "this is the end of the first invocation of hello_world\n");
+        first_time++;
+    }
+}
+
+int main() {
+    hello_world(3);
+}
+```
+
+Скомпилируем с флагом `-c` (только компиляция):
+```sh
+gcc -c static-example.c
+```
+
+Объектные файлы тоже являются `ELF`:
+
+```sh
+readelf -sh static-example.o
+```
+
+```
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              REL (Relocatable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x0
+  Start of program headers:          0 (bytes into file)
+  Start of section headers:          1552 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           0 (bytes)
+  Number of program headers:         0
+  Size of section headers:           64 (bytes)
+  Number of section headers:         14
+  Section header string table index: 13
+
+Symbol table '.symtab' contains 15 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS static-example.c
+     2: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 .text
+     3: 0000000000000000     0 SECTION LOCAL  DEFAULT    4 .bss
+     4: 0000000000000004     4 OBJECT  LOCAL  DEFAULT    4 invocations
+     5: 0000000000000000     0 SECTION LOCAL  DEFAULT    5 .rodata
+     6: 0000000000000008     4 OBJECT  LOCAL  DEFAULT    4 first_time.0
+     7: 0000000000000000     4 OBJECT  GLOBAL DEFAULT    4 not_defined_here
+     8: 0000000000000000    12 OBJECT  GLOBAL DEFAULT    3 message
+     9: 0000000000000000   156 FUNC    GLOBAL DEFAULT    1 hello_world
+    10: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND puts
+    11: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND stderr
+    12: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fprintf
+    13: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fwrite
+    14: 000000000000009c    21 FUNC    GLOBAL DEFAULT    1 main
+```
+
+Определим, что такое символ. Символ - это переменная, которая должна быть обработана линковщиком
+
+### Разбиение символов по виду локальности
+
+Символы можно разделить на 3 типа: ***локальные***, ***глобальные***, ***глобальные (внешние)***. Внешние глобальные символы помечаются как `UND` (~`undefined`) (колонка `Ndx`). Разделим символы из вышеприведённого `ELF` на эти типы:
+
+1) Локальные: статические (`invocations`, `first_time`)
+2) Глобальные: `message`
+3) Глобальные (внешние): `puts`, `stderr`, `fprintf`, `fwrite`
+
+**Важно**, что переменная `increment` символом не является!
+
+### Разбиение на секции
+
+Возвращаемся к секциям. Все символы будут размещены в какие-то из секций.
+
+Продублирую картинку:
+
+[Типы секций](./sections.png)
+
+- `.text`: машинные инструкции (исполняемый код)
+- `.rodata`: `read-only data` - глобальные символы, доступные только для чтения
+- `.data`: `read-write data` - глобальные символы, доступные как для чтения, так и для записи
+- `.bss`: `block starting symbol` (j4f: `better save size`) содержит информацию о данных, о которых на момент запуска программы известно, что они будут иметь значение `0`. В бинарнике не хранятся значения `0`, лишь количество байт, которые необходимо заполнить в памяти нулями. К примеру, если в программе есть буфер размера 4096 байт, в `ELF` будет храниться количество байт буфера, память будет проинициализирована нулями лишь в момент загрузки программы.
+- `.symtab`: информация о символах, выше изображена в человеко-читаемом формате (можно получить через `readelf -s ...`)
+- `.rel.text` & `.rel.data`: `TODO` для линковщика - глобальные внешние символы (`eventually` будут находиться в секциях `.text` или `.data` соответственно, но пока их здесь нет)
+- `.debug`: различные переменные компилятора (информация для отладки)
+- `.line`: отображение ассемблерных инструкций из `.text` на `C`-код (информация для отладки)
+- `.strtab`: соответствие вхождений в таблицу символов их человеко-читаемым символам
+
+### Разбиение символов по степени силы
+
+1) Сильные (`strong symbols`): определённые функции, инициализированные переменные
+2) Слабые (`weak symbols`): неинициализированные переменные
+
+Распространены термины `определение` и `объявление`. Именно про них и идёт речь. Сильное определение - просто определение, слабое определение - объявление. Дальше понятия будут использованы как взаимозаменяемые
+
+Зачем нужно это разделение? Для разрешения конфликтов (или вопросов) двойного определения / объявления
+
+Разберём 3 случая нахождения одного и того же символа:
+1) Линкер находит среди `.o`-файлов 2 сильных определения символа. В таком случае, будет возвращена ошибка
+2) Линкер находит среди `.o`-файлов 1 сильное определение и 1 слабое. Будет выбрано сильное определение
+3) Линкер находит среди `.o`-файлов лишь несколько слабых определений. Будет выбрано одно из слабых определений. Какое, зависит от линковщика - стандарт языка этого не определяет 
+
+Рассмотрим примеры
+
+#### Пример разрешения конфликтов двойного определения
+
+`weaklib.c` содержит слабое определение `x` и сильное определение `f()`:
+
+```c
+int x;
+
+void f() {
+    x = 0x3b29;
+}
+```
+
+`weakmain.c` содержит слабое определение `f()` и сильные определения `x` и `y`:
+
+```c
+#include <stdio.h>
+
+void f();
+
+char x = 'a';
+char y = 'b';
+
+int main() {
+    f();
+    printf("%c%c\n", y, x);
+    return 0;
+}
+```
+
+```Makefile
+CC=gcc
+FLAGS=-g -fno-pie -no-pie -fcommon
+
+%.o: %.c
+	$(CC) $(FLAGS) -c -o $@ $<
+
+weaksymbols: weakmain.o weaklib.o
+	$(CC) $(FLAGS) -o $@ $^
+
+clean:
+	rm -f weaklib.o weakmain.o a.out weaksymbols
+```
+
+Соберём `weaksymbols`:
+
+```sh
+make weaksymbols
+```
+
+И запустим `weaksymbols`. Каким будет вывод? Вот таким:
+
+```
+;)
+```
+
+Почему так?
+
+> Modern versions of gcc (starting with 10.1) default to "-fno-common" which means uninitialized global variables are placed in the bss section instead of the common section so they are considered "strong symbols" instead of "weak" and will produce multiple definition errors. To bypass, specify the "-fcommon" option in the command
+
+Детали: `x` из-за выравнивания перезапишет также и `y`, так как обращение идёт по `int`. Из-за кодировки `LE` (`Little Endian`) `y` станет равным `0x29`, а первый байт `int x` - `0x3b`. 
+
+### Особенности поведения линковщика и немного про релокации
+
+Линковщик сканирует файлы в прямом порядке передачи аргументов. Таким образом, линковщик отслеживает неразрешённые (`unresolved`) символы и добавляет объектные файлы определённого вовне (к примеру, в библиотеке) символа только в том случае, если уже существует слабое определение этого символа в переданных ранее объектниках. В противном случае, символы извне пропускаются за ненадобностью. Из-за такого поведения, в первую очередь линковщику необходимо передавать бинарные файлы с неразрешёнными ещё символами и лишь затем файлы, где эти символы будут разрешены. 
+
+Секция, куда попадают ещё не определённые (не разрешённые) символы, как раз и называется секцией релокаций.
+
+#### Пример корректной и некорректной цели в Makefile
+
+```Makefile
+CCOPTS = gcc -fno-pie -no-pie
+
+sum.o: sum.c sum.h
+    $(CCOPTS) -c sum.c
+
+libsum.a: sum.o
+    ar r libsum.a sum.o
+    ranlib libsum.a
+
+main_broken: libsum.a main.c
+    $(CCOPTS) -L. -lsum -o main main.c
+
+main_fixed: libsum.a main.c
+    $(CCOPTS) main.c -L. -o main -lsum
+```
+
+`main_broken` - некорректная цель, `main_fixed` - корректная
