@@ -194,13 +194,99 @@ SHT_DYNSYM          - 11
 
 ### Типы секций
 
-[Типы секций](./sections.png)
+![Типы секций](./sections.png)
 
 Подробное объяснение того, что содержит каждая из секций, будет дано в [разделе про символы](#разбиение-на-секции), потому что на данный момент недостаточно понятно, какие **конкретно** символы будут размещаться в каждой из секций
 
+### Пример вывода различных типов секций
+
+Рассмотрим следующую программу (`static-example.c`):
+
+```c
+#include <stdio.h>
+
+int not_defined_here;
+char message[] = "hello_world";
+static int invocations = 0;
+
+void hello_world(int increment) {
+    static int first_time = 0;
+    if (increment >= 0) {
+        puts(message);
+        invocations++;
+        fprintf(stderr, "I have printed to the screen %d times.\n", invocations);
+
+        hello_world(increment - 1);
+    }
+
+    if (first_time == 0) {
+        fprintf(stderr, "this is the end of the first invocation of hello_world\n");
+        first_time++;
+    }
+}
+
+int main() {
+    hello_world(3);
+}
+```
+
+Скомпилируем с флагом `-c` (только компиляция):
+```sh
+gcc -c static-example.c
+```
+
+Выведем список секций и их содержимое с помощью утилиты `readelf` (`.o` также являются `ELF`-файлами), воспользовавшись флагом `-S`:
+
+```sh
+readelf -S static-example.o
+```
+
+```
+There are 14 section headers, starting at offset 0x610:
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+  [ 0]                   NULL             0000000000000000  00000000
+       0000000000000000  0000000000000000           0     0     0
+  [ 1] .text             PROGBITS         0000000000000000  00000040
+       00000000000000b1  0000000000000000  AX       0     0     1
+  [ 2] .rela.text        RELA             0000000000000000  000003e8
+       0000000000000180  0000000000000018   I      11     1     8
+  [ 3] .data             PROGBITS         0000000000000000  000000f8
+       000000000000000c  0000000000000000  WA       0     0     8
+  [ 4] .bss              NOBITS           0000000000000000  00000104
+       000000000000000c  0000000000000000  WA       0     0     4
+  [ 5] .rodata           PROGBITS         0000000000000000  00000108
+       0000000000000060  0000000000000000   A       0     0     8
+  [ 6] .comment          PROGBITS         0000000000000000  00000168
+       000000000000001c  0000000000000001  MS       0     0     1
+  [ 7] .note.GNU-stack   PROGBITS         0000000000000000  00000184
+       0000000000000000  0000000000000000           0     0     1
+  [ 8] .note.gnu.pr[...] NOTE             0000000000000000  00000188
+       0000000000000030  0000000000000000   A       0     0     8
+  [ 9] .eh_frame         PROGBITS         0000000000000000  000001b8
+       0000000000000058  0000000000000000   A       0     0     8
+  [10] .rela.eh_frame    RELA             0000000000000000  00000568
+       0000000000000030  0000000000000018   I      11     9     8
+  [11] .symtab           SYMTAB           0000000000000000  00000210
+       0000000000000168  0000000000000018          12     7     8
+  [12] .strtab           STRTAB           0000000000000000  00000378
+       0000000000000070  0000000000000000           0     0     1
+  [13] .shstrtab         STRTAB           0000000000000000  00000598
+       0000000000000074  0000000000000000           0     0     1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), l (large), p (processor specific)
+```
+
+В выводе видны наименования показанных ранее секций. Их подробное описание будет [позже](#разбиение-на-секции)
+
 ### Дополнительно
 
-Получить описание секций можно с помощью вызова программы `readelf` с флагами `--sections/-S`.
+Получить описание секций можно с помощью вызова программы `readelf` с флагами `--sections/-S` или `objdump` с флагом `-s`
 
 ## Заголовки сегментов (заголовки программ)
 
@@ -252,42 +338,7 @@ PT_TLS          - 7 - THREAD LOCAL STORAGE INFORMATION
 
 ## Символы
 
-Разберём следующую программу (`static-example.c`):
-
-```c
-#include <stdio.h>
-
-int not_defined_here;
-char message[] = "hello_world";
-static int invocations = 0;
-
-void hello_world(int increment) {
-    static int first_time = 0;
-    if (increment >= 0) {
-        puts(message);
-        invocations++;
-        fprintf(stderr, "I have printed to the screen %d times.\n", invocations);
-
-        hello_world(increment - 1);
-    }
-
-    if (first_time == 0) {
-        fprintf(stderr, "this is the end of the first invocation of hello_world\n");
-        first_time++;
-    }
-}
-
-int main() {
-    hello_world(3);
-}
-```
-
-Скомпилируем с флагом `-c` (только компиляция):
-```sh
-gcc -c static-example.c
-```
-
-Объектные файлы тоже являются `ELF`:
+Воспользуемся утилитой `readelf` для чтения символов перемещаемого бинарного файла (объектника) из [примера](#пример):
 
 ```sh
 readelf -sh static-example.o
@@ -352,7 +403,54 @@ Symbol table '.symtab' contains 15 entries:
 
 Продублирую картинку:
 
-[Типы секций](./sections.png)
+![Типы секций](./sections.png)
+
+[Ранее](#пример-вывода-различных-типов-секций) был показан пример чтения `ELF`-файла и вывода секций через `readelf`. С помощью `objdump` можно вывести дамп каждой конкретной секции и посмотреть её содержимое
+
+```sh
+objdump -s static-exameple.o
+```
+
+```
+static-example.o:     file format elf64-x86-64
+
+Contents of section .text:
+ 0000 554889e5 4883ec10 897dfc83 7dfc0078  UH..H....}..}..x
+ 0010 4f488d05 00000000 4889c7e8 00000000  OH......H.......
+ 0020 8b050000 000083c0 01890500 0000008b  ................
+ 0030 15000000 00488b05 00000000 488d0d00  .....H......H...
+ 0040 00000048 89ce4889 c7b80000 0000e800  ...H..H.........
+ 0050 0000008b 45fc83e8 0189c7e8 00000000  ....E...........
+ 0060 8b050000 000085c0 752f488b 05000000  ........u/H.....
+ 0070 00488d3d 00000000 4889c1ba 37000000  .H.=....H...7...
+ 0080 be010000 00e80000 00008b05 00000000  ................
+ 0090 83c00189 05000000 0090c9c3 554889e5  ............UH..
+ 00a0 bf030000 00e80000 0000b800 0000005d  ...............]
+ 00b0 c3                                   .
+Contents of section .data:
+ 0000 68656c6c 6f5f776f 726c6400           hello_world.
+Contents of section .rodata:
+ 0000 49206861 76652070 72696e74 65642074  I have printed t
+ 0010 6f207468 65207363 7265656e 20256420  o the screen %d
+ 0020 74696d65 732e0a00 74686973 20697320  times...this is
+ 0030 74686520 656e6420 6f662074 68652066  the end of the f
+ 0040 69727374 20696e76 6f636174 696f6e20  irst invocation
+ 0050 6f662068 656c6c6f 5f776f72 6c640a00  of hello_world..
+Contents of section .comment:
+ 0000 00474343 3a202847 4e552920 31352e32  .GCC: (GNU) 15.2
+ 0010 2e312032 30323630 31303300           .1 20260103.
+Contents of section .note.gnu.property:
+ 0000 04000000 20000000 05000000 474e5500  .... .......GNU.
+ 0010 020001c0 04000000 01000000 00000000  ................
+ 0020 010001c0 04000000 01000000 00000000  ................
+Contents of section .eh_frame:
+ 0000 14000000 00000000 017a5200 01781001  .........zR..x..
+ 0010 1b0c0708 90010000 1c000000 1c000000  ................
+ 0020 00000000 9c000000 00410e10 8602430d  .........A....C.
+ 0030 0602970c 07080000 1c000000 3c000000  ............<...
+ 0040 00000000 15000000 00410e10 8602430d  .........A....C.
+ 0050 06500c07 08000000                    .P......
+```
 
 - `.text`: машинные инструкции (исполняемый код)
 - `.rodata`: `read-only data` - глобальные символы, доступные только для чтения
