@@ -588,3 +588,73 @@ main_fixed: libsum.a main.c
 ```
 
 `main_broken` - некорректная цель, `main_fixed` - корректная
+
+### Релокации
+
+Чтобы понять, что такое релокация, рассмотрим пример более простой программы:
+
+`values.h`:
+
+```h
+int value;
+
+int getValue();
+```
+
+`main.c`:
+
+```c
+#include "values.h"
+
+int main() {
+    return getValue();
+}
+```
+
+Скомпилируем:
+
+```sh
+gcc -c main.c
+```
+
+Продизассемблируем с флагом `-r` (`--reloc`), благодаря которому можно будет увидеть релокации:
+
+```sh
+objdump -dr -M intel main.o
+```
+
+```
+main.o:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000000000 <main>:
+   0:   55                      push   rbp
+   1:   48 89 e5                mov    rbp,rsp
+   4:   e8 00 00 00 00          call   9 <main+0x9>
+                        5: R_X86_64_PLT32       getValue-0x4
+   9:   5d                      pop    rbp
+   a:   c3                      ret
+
+```
+
+Итак, `релокация` - заметка для линковщика, требующая от него разрешения (резолвинга) символа и показывающая, на какой сдвиг должен быть размещён символ и какого он должен быть размер. Компилятор не знает, где взять символ `getValue`: он оставляет эту задачу линковщику. 
+
+Релокации не содержатся в секции машинных инструкций. `objdump` берёт их из секции `.rela.text`. Посмотрим на неё:
+
+```sh
+readelf --relocs main.o
+```
+
+```
+Relocation section '.rela.text' at offset 0x180 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000000005  000500000004 R_X86_64_PLT32    0000000000000000 getValue - 4
+
+Relocation section '.rela.eh_frame' at offset 0x198 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000000020  000200000002 R_X86_64_PC32     0000000000000000 .text + 0
+```
+
+Действительно, `getValue` находится в секции релокаций. Здесь же находится и сдвиг: `5` - отсюда `objdump` его и берёт.
