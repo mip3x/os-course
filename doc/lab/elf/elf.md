@@ -10,6 +10,7 @@
 - [Заголовки сегментов (заголовки программ)](#Заголовки-сегментов-заголовки-программ)
     - [Структура `Program Header`'а](#Структура-Program-Headerа)
 - [Символы](#Символы)
+- [Линковка](#Линковка)
 
 ## Ресурсы
 
@@ -234,16 +235,13 @@ int main() {
 
 Скомпилируем с флагом `-c` (только компиляция):
 ```sh
-gcc -c static-example.c
+$ gcc -c static-example.c
 ```
 
 Выведем список секций и их содержимое с помощью утилиты `readelf` (`.o` также являются `ELF`-файлами), воспользовавшись флагом `-S`:
 
 ```sh
-readelf -S static-example.o
-```
-
-```
+$ readelf -S static-example.o
 There are 14 section headers, starting at offset 0x610:
 
 Section Headers:
@@ -343,10 +341,7 @@ PT_TLS          - 7 - THREAD LOCAL STORAGE INFORMATION
 Воспользуемся утилитой `readelf` для чтения символов перемещаемого бинарного файла (объектника) из [примера](#пример):
 
 ```sh
-readelf -sh static-example.o
-```
-
-```
+$ readelf -sh static-example.o
 ELF Header:
   Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
   Class:                             ELF64
@@ -390,10 +385,7 @@ Symbol table '.symtab' contains 15 entries:
 Эти же символы можно прочитать ещё и с помощью утилиты `nm`:
 
 ```sh
-nm static-example.o
-```
-
-```
+$ nm static-example.o
 0000000000000008 b first_time.0
                  U fprintf
                  U fwrite
@@ -420,6 +412,8 @@ nm static-example.o
 
 **Важно**: переменная `increment` символом не является! Также не являются символами переменные `some_var` и `some_var_defined`. Работа с ними происходит через стек, поэтому изменяется лишь секция `.text`, линковщику не придётся совершать работу по разрешению этих символов
 
+В английских источниках можно встретить понятие `ELF Binding`. Это и есть разбиение по виду локальности
+
 ### Разбиение на секции
 
 Возвращаемся к секциям. Все символы будут размещены в какие-то из секций.
@@ -431,10 +425,7 @@ nm static-example.o
 [Ранее](#пример-вывода-различных-типов-секций) был показан пример чтения `ELF`-файла и вывода секций через `readelf`. С помощью `objdump` можно вывести дамп каждой конкретной секции и посмотреть её содержимое
 
 ```sh
-objdump -s static-example.o
-```
-
-```
+$ objdump -s static-example.o
 static-example.o:     file format elf64-x86-64
 
 Contents of section .text:
@@ -596,9 +587,19 @@ main_fixed: libsum.a main.c
 `values.h`:
 
 ```h
-int value;
+extern int value;
 
 int getValue();
+```
+
+`values.c`:
+
+```c
+int value = 42;
+
+int getValue() {
+    return value;
+}
 ```
 
 `main.c`:
@@ -620,10 +621,7 @@ gcc -c main.c
 Продизассемблируем с флагом `-r` (`--reloc`), благодаря которому можно будет увидеть релокации:
 
 ```sh
-objdump -dr -M intel main.o
-```
-
-```
+$ objdump -dr -M intel main.o
 main.o:     file format elf64-x86-64
 
 
@@ -644,10 +642,7 @@ Disassembly of section .text:
 Релокации не содержатся в секции машинных инструкций. `objdump` берёт их из секции `.rela.text`. Посмотрим на неё:
 
 ```sh
-readelf --relocs main.o
-```
-
-```
+$ readelf --relocs main.o
 Relocation section '.rela.text' at offset 0x180 contains 1 entry:
   Offset          Info           Type           Sym. Value    Sym. Name + Addend
 000000000005  000500000004 R_X86_64_PLT32    0000000000000000 getValue - 4
@@ -658,3 +653,70 @@ Relocation section '.rela.eh_frame' at offset 0x198 contains 1 entry:
 ```
 
 Действительно, `getValue` находится в секции релокаций. Здесь же находится и сдвиг: `5` - отсюда `objdump` его и берёт.
+
+Линковщик обходит таблицу релокаций `main.o` и пытается найти символ `getValue` в таблице символов `values.o`.
+
+Соберём программу и посмотрим на вывод: 
+
+```sh
+gcc -c main.c values.c
+gcc main.o values.o
+./a.out
+echo $?
+> 42
+```
+
+Всё верно. Теперь посмотрим на символы из `values.o`:
+
+```sh
+$ nm values.o
+0000000000000000 T getValue
+0000000000000000 D value
+```
+
+Теперь узнаем, что НА САМОМ ДЕЛЕ делает программа `strip`:
+
+```sh
+$ strip values.o
+$ nm values.o
+nm: values.o: no symbols
+```
+
+Да, одной из задач, которую выполняет `strip`, является обрезание символов (секции `.symtab`). Но код до сих пор там. При линковке ожидаемо получаемо ошибку:
+
+```sh
+$ gcc main.o values.o
+/usr/bin/ld: error in values.o(.eh_frame); no .eh_frame_hdr table will be created
+/usr/bin/ld: main.o: in function `main':
+main.c:(.text+0x5): undefined reference to `getValue'
+collect2: error: ld returned 1 exit status
+```
+
+## Линковка
+
+Кажется, нужно разгрузить функцию `getValue()`. Добавим хэлпер в `values.c`:
+
+```c
+int value = 42;
+
+static int helper() {
+    return value;
+}
+
+int getValue() {
+    return helper();
+}
+```
+
+Скомпилируем `values.c` заново и запустим `nm`:
+
+```sh
+$ nm values.o
+000000000000000c T getValue
+0000000000000000 t helper
+0000000000000000 D value
+```
+
+Символы `getValue` и `value` остались прежними, появился символ `helper`, который имеет обозначение `t` в нижнем регистре. Это означает, что символ попадёт также в секцию `.text`, но к нему будет применена внутренняя (`internal`) линковка. Верхний регистр означает внешнюю (`external`) линковку. 
+
+К чему это? [Тут](#разбиение-символов-по-виду-локальности) шла речь о том, что символы можно разделить на локальные и глобальные. Так вот, глобальные символы разрешаются внешней линковкой, а локальные - внутренней.
