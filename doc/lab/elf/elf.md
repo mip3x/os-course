@@ -20,6 +20,7 @@
 4) [man-страница](https://man7.org/linux/man-pages/man5/elf.5.html)
 5) [Спецификация `ELF`](https://refspecs.linuxfoundation.org/elf/elf.pdf)
 6) [Курс CS 361 (в начале есть полезные видео по символам, ELF, линковке, PIC, GOT, PLT и т.д.)](https://youtube.com/playlist?list=PLhy9gU5W1fvUND_5mdpbNVHC1WCIaABbP&si=sNfhM18q1MtCw_a6)
+7) [Статья `Linkers and Loaders`](https://www.linuxjournal.com/article/6463)
 
 ## Основные сущности
 
@@ -206,6 +207,10 @@ SHT_DYNSYM          - 11
 ```c
 #include <stdio.h>
 
+__attribute__((weak)) int ten_func() {
+    return 10;
+};
+
 int not_defined_here;
 char message[] = "hello_world";
 static int invocations = 0;
@@ -242,7 +247,7 @@ $ gcc -c static-example.c
 
 ```sh
 $ readelf -S static-example.o
-There are 14 section headers, starting at offset 0x610:
+There are 14 section headers, starting at offset 0x680:
 
 Section Headers:
   [Nr] Name              Type             Address           Offset
@@ -250,30 +255,30 @@ Section Headers:
   [ 0]                   NULL             0000000000000000  00000000
        0000000000000000  0000000000000000           0     0     0
   [ 1] .text             PROGBITS         0000000000000000  00000040
-       00000000000000b8  0000000000000000  AX       0     0     1
-  [ 2] .rela.text        RELA             0000000000000000  000003e8
+       00000000000000c3  0000000000000000  AX       0     0     1
+  [ 2] .rela.text        RELA             0000000000000000  00000440
        0000000000000180  0000000000000018   I      11     1     8
-  [ 3] .data             PROGBITS         0000000000000000  000000f8
+  [ 3] .data             PROGBITS         0000000000000000  00000108
        000000000000000c  0000000000000000  WA       0     0     8
-  [ 4] .bss              NOBITS           0000000000000000  00000104
+  [ 4] .bss              NOBITS           0000000000000000  00000114
        000000000000000c  0000000000000000  WA       0     0     4
-  [ 5] .rodata           PROGBITS         0000000000000000  00000108
+  [ 5] .rodata           PROGBITS         0000000000000000  00000118
        0000000000000060  0000000000000000   A       0     0     8
-  [ 6] .comment          PROGBITS         0000000000000000  00000168
+  [ 6] .comment          PROGBITS         0000000000000000  00000178
        000000000000001c  0000000000000001  MS       0     0     1
-  [ 7] .note.GNU-stack   PROGBITS         0000000000000000  00000184
+  [ 7] .note.GNU-stack   PROGBITS         0000000000000000  00000194
        0000000000000000  0000000000000000           0     0     1
-  [ 8] .note.gnu.pr[...] NOTE             0000000000000000  00000188
+  [ 8] .note.gnu.pr[...] NOTE             0000000000000000  00000198
        0000000000000030  0000000000000000   A       0     0     8
-  [ 9] .eh_frame         PROGBITS         0000000000000000  000001b8
-       0000000000000058  0000000000000000   A       0     0     8
-  [10] .rela.eh_frame    RELA             0000000000000000  00000568
-       0000000000000030  0000000000000018   I      11     9     8
-  [11] .symtab           SYMTAB           0000000000000000  00000210
-       0000000000000168  0000000000000018          12     7     8
-  [12] .strtab           STRTAB           0000000000000000  00000378
-       0000000000000070  0000000000000000           0     0     1
-  [13] .shstrtab         STRTAB           0000000000000000  00000598
+  [ 9] .eh_frame         PROGBITS         0000000000000000  000001c8
+       0000000000000078  0000000000000000   A       0     0     8
+  [10] .rela.eh_frame    RELA             0000000000000000  000005c0
+       0000000000000048  0000000000000018   I      11     9     8
+  [11] .symtab           SYMTAB           0000000000000000  00000240
+       0000000000000180  0000000000000018          12     7     8
+  [12] .strtab           STRTAB           0000000000000000  000003c0
+       0000000000000079  0000000000000000           0     0     1
+  [13] .shstrtab         STRTAB           0000000000000000  00000608
        0000000000000074  0000000000000000           0     0     1
 Key to Flags:
   W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
@@ -354,7 +359,7 @@ ELF Header:
   Version:                           0x1
   Entry point address:               0x0
   Start of program headers:          0 (bytes into file)
-  Start of section headers:          1552 (bytes into file)
+  Start of section headers:          1664 (bytes into file)
   Flags:                             0x0
   Size of this header:               64 (bytes)
   Size of program headers:           0 (bytes)
@@ -363,23 +368,24 @@ ELF Header:
   Number of section headers:         14
   Section header string table index: 13
 
-Symbol table '.symtab' contains 15 entries:
+Symbol table '.symtab' contains 16 entries:
    Num:    Value          Size Type    Bind   Vis      Ndx Name
-     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
      1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS static-example.c
      2: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 .text
      3: 0000000000000000     0 SECTION LOCAL  DEFAULT    4 .bss
      4: 0000000000000004     4 OBJECT  LOCAL  DEFAULT    4 invocations
      5: 0000000000000000     0 SECTION LOCAL  DEFAULT    5 .rodata
      6: 0000000000000008     4 OBJECT  LOCAL  DEFAULT    4 first_time.0
-     7: 0000000000000000     4 OBJECT  GLOBAL DEFAULT    4 not_defined_here
-     8: 0000000000000000    12 OBJECT  GLOBAL DEFAULT    3 message
-     9: 0000000000000000   163 FUNC    GLOBAL DEFAULT    1 hello_world
-    10: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND puts
-    11: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND stderr
-    12: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fprintf
-    13: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fwrite
-    14: 00000000000000a3    21 FUNC    GLOBAL DEFAULT    1 main
+     7: 0000000000000000    11 FUNC    WEAK   DEFAULT    1 ten_func
+     8: 0000000000000000     4 OBJECT  GLOBAL DEFAULT    4 not_defined_here
+     9: 0000000000000000    12 OBJECT  GLOBAL DEFAULT    3 message
+    10: 000000000000000b   163 FUNC    GLOBAL DEFAULT    1 hello_world
+    11: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND puts
+    12: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND stderr
+    13: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fprintf
+    14: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND fwrite
+    15: 00000000000000ae    21 FUNC    GLOBAL DEFAULT    1 main
 ```
 
 Эти же символы можно прочитать ещё и с помощью утилиты `nm`:
@@ -389,26 +395,72 @@ $ nm static-example.o
 0000000000000008 b first_time.0
                  U fprintf
                  U fwrite
-0000000000000000 T hello_world
+000000000000000b T hello_world
 0000000000000004 b invocations
-00000000000000a3 T main
+00000000000000ae T main
 0000000000000000 D message
 0000000000000000 B not_defined_here
                  U puts
                  U stderr
+0000000000000000 W ten_func
 ```
 
 Те же самые символы, что в выводе `readelf -s`. Здесь второй столбец показывает секцию, в которую попадёт символ: `T` - в секцию `.text`, `D` - в `.data`, `B` - в `.bss`, левый столбец - сдвиг относительно начала секции, правый - название символа. Подробнее про секции [дальше](#разбиение-на-секции)
 
 Определим, что такое символ. Символ - это переменная, которая должна быть обработана линковщиком
 
-### Разбиение символов по виду локальности
+### Структура символа
 
-Символы можно разделить на 3 типа: ***локальные***, ***глобальные***, ***глобальные (внешние)***. Внешние глобальные символы помечаются как `UND` (~`undefined`) (колонка `Ndx`). Разделим символы из вышеприведённого `ELF` на эти типы:
+```c
+typedef struct elf32_sym {
+  Elf32_Word	st_name;
+  Elf32_Addr	st_value;
+  Elf32_Word	st_size;
+  unsigned char	st_info;
+  unsigned char	st_other;
+  Elf32_Half	st_shndx;
+} Elf32_Sym;
+
+typedef struct elf64_sym {
+  Elf64_Word st_name;		/* Symbol name, index in string tbl */
+  unsigned char	st_info;	/* Type and binding attributes */
+  unsigned char	st_other;	/* No defined meaning, 0 */
+  Elf64_Half st_shndx;		/* Associated section index */
+  Elf64_Addr st_value;		/* Value of the symbol */
+  Elf64_Xword st_size;		/* Associated symbol size */
+} Elf64_Sym;
+```
+
+`st_name` содержит индекс имени символа в таблице строк символов. Колонка `Name` в выводе `readelf --symbols <elf>`
+
+`st_info` содержит тип символа и его биндинг. Колонки `Type` и `Bind` соответственно в выводе `readelf --symbols <elf>`
+
+`st_other` сейчас не имеет определённого значения, раньше определял видимость. Колонка `Vis` в выводе `readelf --symbols <elf>`
+
+`st_shndx` содержит индекс секции, к которой относится символ (колонка `[Nr]` в выводе `readelf --sections <elf>`). Также, существуют некоторые специальные значения индексов (`UND`, `COM`, `ABS` и другие): эти символы пока не принадлежат ни одной из секций. Колонка `Ndx` в выводе `readelf --symbols <elf>`
+
+`st_value` содержит значение символа. Колонка `Value` в выводе `readelf --symbols <elf>`
+
+`st_size` содержит размер символа. Колонка `Size` в выводе `readelf --symbols <elf>`
+
+### Разбиение символов по виду локальности (биндинг)
+
+Символы можно разделить на 4 типа: ***локальные***, ***глобальные***, ***внешние (определённые извне)***, ***слабые***. 3 из этих типов соответственно обозначаются через `STB_LOCAL`, `STB_GLOBAL`, `STB_WEAK`. Внешние символы помечаются как `STB_GLOBAL` + `UND` (~`undefined`) (колонка `Ndx`). Разделим символы из вышеприведённого `ELF` на эти типы:
 
 1) Локальные: статические (`invocations`, `first_time`)
 2) Глобальные: `message`
-3) Глобальные (внешние): `puts`, `stderr`, `fprintf`, `fwrite`
+3) Внешние (определённые извне): `puts`, `stderr`, `fprintf`, `fwrite`
+4) Слабые (`weak`): `ten_func`
+
+Про ***локальные***, ***глобальные*** и ***внешние*** символы подробнее будет в разделе о [линковке](#линковка)
+
+Для понимания ***слабых*** символов нужно ввести понятие ***сильного*** символа. ***Сильный символ*** - инициализированный символ. То есть, определённый однозначно. Его повторное определение приведёт к ошибке линковки. В целом, эти понятия определяются на уровне компиляции и линковки, не на уровне стандарта языка. ***Слабый символ*** можно определять повторно. Один из способов пометки символа как ***слабого*** является указания аттрибута `__attribute((weak))`, что и было продемонстрировано в примере `static-example.c`. Пометка символа слабым нужна, к примеру, для определения стандартного поведения, если не определено иное. 
+
+Разберём 3 случая разрешения символа:
+1) Линкер находит среди `.o`-файлов 2 сильных определения символа. В таком случае, будет возвращена ошибка
+2) Линкер находит среди `.o`-файлов 1 сильное определение и 1 слабое. Будет выбрано сильное определение
+3) Линкер находит среди `.o`-файлов лишь несколько слабых определений. Будет выбрано одно из слабых определений. Какое, зависит от линковщика - стандарт языка этого не определяет 
+
 
 **Важно**: переменная `increment` символом не является! Также не являются символами переменные `some_var` и `some_var_defined`. Работа с ними происходит через стек, поэтому изменяется лишь секция `.text`, линковщику не придётся совершать работу по разрешению этих символов
 
@@ -476,25 +528,14 @@ Contents of section .eh_frame:
 - `.line`: отображение ассемблерных инструкций из `.text` на `C`-код (информация для отладки)
 - `.strtab`: соответствие вхождений в таблицу символов их человеко-читаемым символам
 
-### Разбиение символов по степени силы
+### Про `common`-символы
 
-1) Сильные (`strong symbols`): определённые функции, инициализированные переменные
-2) Слабые (`weak symbols`): неинициализированные переменные
+1) Сильные (`strong symbols`): инициализированные символы (было уже введено ранее)
+2) Обычные (`common symbols`): неинициализированные символы, хинт (директива) линковщику: во время своей работы он может встретить несколько объявлений этого символы разных размерностей (к примеру, 4 байта или 1 байт (`uint32_t` или `uint8_t`)). Линковщик разместит все символы по одному и тому же месту в памяти и выделит место, равное символу наибольшей размерности (если рассматривать пример, то это будет `uint32_t`). В английских источниках можно встретить название `tentative definitions`
 
-Распространены термины `определение` и `объявление`. Именно про них и идёт речь. Сильное определение - просто определение, слабое определение - объявление. Дальше понятия будут использованы как взаимозаменяемые
+#### Пример c `common symbol`
 
-Зачем нужно это разделение? Для разрешения конфликтов (или вопросов) двойного определения / объявления
-
-Разберём 3 случая нахождения одного и того же символа:
-1) Линкер находит среди `.o`-файлов 2 сильных определения символа. В таком случае, будет возвращена ошибка
-2) Линкер находит среди `.o`-файлов 1 сильное определение и 1 слабое. Будет выбрано сильное определение
-3) Линкер находит среди `.o`-файлов лишь несколько слабых определений. Будет выбрано одно из слабых определений. Какое, зависит от линковщика - стандарт языка этого не определяет 
-
-Рассмотрим примеры
-
-#### Пример разрешения конфликтов двойного определения
-
-`weaklib.c` содержит слабое определение `x` и сильное определение `f()`:
+`commonlib.c` содержит обычное определение `x` и сильное определение `f()`:
 
 ```c
 int x;
@@ -504,7 +545,7 @@ void f() {
 }
 ```
 
-`weakmain.c` содержит слабое определение `f()` и сильные определения `x` и `y`:
+`commonmain.c` содержит обычное определение `f()` и сильные определения `x` и `y`:
 
 ```c
 #include <stdio.h>
@@ -528,20 +569,20 @@ FLAGS=-g -fno-pie -no-pie -fcommon
 %.o: %.c
 	$(CC) $(FLAGS) -c -o $@ $<
 
-weaksymbols: weakmain.o weaklib.o
+commonsymbols: commonmain.o commonlib.o
 	$(CC) $(FLAGS) -o $@ $^
 
 clean:
-	rm -f weaklib.o weakmain.o a.out weaksymbols
+	rm -f commonlib.o commonmain.o a.out commonsymbols
 ```
 
-Соберём `weaksymbols`:
+Соберём `commmonsymbols`:
 
 ```sh
-make weaksymbols
+make commonsymbols
 ```
 
-И запустим `weaksymbols`. Каким будет вывод? Вот таким:
+И запустим `commonsymbols`. Каким будет вывод? Вот таким:
 
 ```
 ;)
@@ -549,9 +590,72 @@ make weaksymbols
 
 Почему так?
 
-> Modern versions of gcc (starting with 10.1) default to "-fno-common" which means uninitialized global variables are placed in the bss section instead of the common section so they are considered "strong symbols" instead of "weak" and will produce multiple definition errors. To bypass, specify the "-fcommon" option in the command
+> Modern versions of gcc (starting with 10.1) default to "-fno-common" which means uninitialized global variables are placed in the `.bss` section instead of the common section so they are considered "strong symbols" instead of "common" and will produce multiple definition errors. To bypass, specify the "-fcommon" option in the command
+
+<details>
+
+<summary>Подробнее про `-fno-common`</summary>
+
+Рассмотрим пример:
+
+```sh
+$ echo 'int x;' > a.c
+$ gcc -S -fno-common a.c
+$ cat a.s
+        .file   "a.c"
+        .text
+        .globl  x
+        .bss
+        .align 4
+        .type   x, @object
+        .size   x, 4
+x:
+        .zero   4
+        .ident  "GCC: (GNU) 15.2.1 20260103"
+        .section        .note.GNU-stack,"",@progbits
+```
+
+С флагом `-fno-common` (стандартным для последних версий `GCC`) `x` попал в секцию `.bss`
+
+Соберём с флагом `-fcommon`:
+
+```sh
+$ gcc -S -fcommon a.c
+$ cat a.s
+        .file   "a.c"
+        .text
+        .comm   x,4,4
+        .ident  "GCC: (GNU) 15.2.1 20260103"
+        .section        .note.GNU-stack,"",@progbits
+```
+
+В какую секцию попадёт `x`? На этом этапе ещё не известно, `.comm` - вид символа, который будет разрешён линковщиком. Иначе говоря, он является пока "предварительным"(`tentative`) символов, который не находится ни в какой секции. Его судьбу будут решать позже
+
+</details>
 
 Детали: `x` из-за выравнивания перезапишет также и `y`, так как обращение идёт по `int`. Из-за кодировки `LE` (`Little Endian`) `y` станет равным `0x29`, а первый байт `int x` - `0x3b`. 
+
+В таблице символов `common`-символы будут помечены соответствующе:
+
+```sh
+$ nm commonlib.o
+0000000000000000 T f
+0000000000000004 C x
+
+$ readelf --syms commonlib.o
+Symbol table '.symtab' contains 10 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS weaklib.c
+     2: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 .text
+     3: 0000000000000000     0 SECTION LOCAL  DEFAULT    5 .debug_info
+     4: 0000000000000000     0 SECTION LOCAL  DEFAULT    7 .debug_abbrev
+     5: 0000000000000000     0 SECTION LOCAL  DEFAULT   10 .debug_line
+     6: 0000000000000000     0 SECTION LOCAL  DEFAULT   12 .debug_str
+     7: 0000000000000000     0 SECTION LOCAL  DEFAULT   13 .debug_line_str
+     8: 0000000000000004     4 OBJECT  GLOBAL DEFAULT  COM x
+     9: 0000000000000000    17 FUNC    GLOBAL DEFAULT    1 f
+```
 
 ### Особенности поведения линковщика и немного про релокации
 
@@ -682,7 +786,7 @@ $ nm values.o
 nm: values.o: no symbols
 ```
 
-Да, одной из задач, которую выполняет `strip`, является обрезание символов (секции `.symtab`). Но код до сих пор там. При линковке ожидаемо получаемо ошибку:
+Да, одной из задач, которую выполняет `strip`, является обрезание символов (секции `.symtab`). Но секция кода ведь до сих пор там. При линковке ожидаемо получаем ошибку:
 
 ```sh
 $ gcc main.o values.o
@@ -719,4 +823,30 @@ $ nm values.o
 
 Символы `getValue` и `value` остались прежними, появился символ `helper`, который имеет обозначение `t` в нижнем регистре. Это означает, что символ попадёт также в секцию `.text`, но к нему будет применена внутренняя (`internal`) линковка. Верхний регистр означает внешнюю (`external`) линковку. 
 
-К чему это? [Тут](#разбиение-символов-по-виду-локальности) шла речь о том, что символы можно разделить на локальные и глобальные. Так вот, глобальные символы разрешаются внешней линковкой, а локальные - внутренней.
+Линковку иначе можно называть связыванием. Итак, внешнее связывание подразумевает доступность переменной во всех единицах трансляции, внутреннее - только в текущей.
+
+К чему это? [Тут](#разбиение-символов-по-виду-локальности-биндинг) шла речь о том, что символы можно разделить на локальные и глобальные. Так вот, глобальные символы разрешаются внешней линковкой, а локальные - внутренней.
+
+Добавим хэлпер также и в `main.c`:
+
+```c
+#include "values.h"
+#include <stdio.h>
+
+static void helper() {
+    printf("USAGE: ...");
+}
+
+int main() {
+    return getValue();
+}
+```
+
+```sh
+$ gcc -c main.c
+$ nm main.o
+                 U getValue
+0000000000000000 t helper
+000000000000001b T main
+                 U printf
+```
