@@ -942,3 +942,139 @@ $ nm main.o
 
 К чему это? [Тут](#разбиение-символов-по-виду-локальности-биндинг) шла речь о том, что символы можно разделить на локальные и глобальные. Так вот, глобальные символы разрешаются внешней линковкой, а локальные - внутренней.
 
+### Статическая и динамическая линковка
+
+#### Статическая
+
+При статической линковке зависимости копируются непосредственно в финальный исполняемый файл. Такой бинарный файл будет естесственно, занимать больше места на диске и места в памяти при загрузке. 
+
+То есть, линковка происходит во время сборки (`compile time`).
+
+С помощью `g**` можно скомпилировать такой бинарник, если использовать флаг `-static`:
+
+```sh
+$ gcc main.c sum.c -static -o mainstatic
+$ du -sh mainstatic
+816K    mainstatic
+```
+
+При обновлении любой библиотеки статический бинарник, ожидаемо, придётся пересобирать
+
+#### Динамическая
+
+При динамической линковке имена внешних библиотек копируются в исполняемый файл как неразрешённые символы и разрешаются... лишь в рантайме. То есть, если посмотреть на таблицу символов такого бинарника, то символы будут ещё не разрешены:
+
+```sh
+$ gcc main.c sum.c -o main
+$ readelf --syms main
+Symbol table '.dynsym' contains 6 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _[...]@GLIBC_2.34 (2)
+     2: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_deregisterT[...]
+     3: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND __gmon_start__
+     4: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_registerTMC[...]
+     5: 0000000000000000     0 FUNC    WEAK   DEFAULT  UND [...]@GLIBC_2.2.5 (3)
+
+Symbol table '.symtab' contains 38 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS Scrt1.o
+     2: 000000000000209c    32 OBJECT  LOCAL  DEFAULT   16 __abi_tag
+     3: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS crtbeginS.o
+     4: 0000000000001050     0 FUNC    LOCAL  DEFAULT   11 deregister_tm_clones
+     5: 0000000000001080     0 FUNC    LOCAL  DEFAULT   11 register_tm_clones
+     6: 00000000000010c0     0 FUNC    LOCAL  DEFAULT   11 __do_global_dtors_aux
+     7: 0000000000004020     1 OBJECT  LOCAL  DEFAULT   23 completed.0
+     8: 0000000000003e18     0 OBJECT  LOCAL  DEFAULT   18 __do_global_dtor[...]
+     9: 0000000000001110     0 FUNC    LOCAL  DEFAULT   11 frame_dummy
+    10: 0000000000003e10     0 OBJECT  LOCAL  DEFAULT   17 __frame_dummy_in[...]
+    11: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS main.c
+    12: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS sum.c
+    13: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS crtendS.o
+    14: 0000000000002098     0 OBJECT  LOCAL  DEFAULT   15 __FRAME_END__
+    15: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS 
+    16: 0000000000003e20     0 OBJECT  LOCAL  DEFAULT   19 _DYNAMIC
+    17: 0000000000002004     0 NOTYPE  LOCAL  DEFAULT   14 __GNU_EH_FRAME_HDR
+    18: 0000000000003fe8     0 OBJECT  LOCAL  DEFAULT   21 _GLOBAL_OFFSET_TABLE_
+    19: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND __libc_start_mai[...]
+    20: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_deregisterT[...]
+    21: 0000000000004000     0 NOTYPE  WEAK   DEFAULT   22 data_start
+    22: 0000000000004010    16 OBJECT  GLOBAL DEFAULT   22 array
+    23: 0000000000004020     0 NOTYPE  GLOBAL DEFAULT   22 _edata
+    24: 0000000000001184     0 FUNC    GLOBAL HIDDEN    12 _fini
+    25: 0000000000004000     0 NOTYPE  GLOBAL DEFAULT   22 __data_start
+    26: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND __gmon_start__
+    27: 0000000000004008     0 OBJECT  GLOBAL HIDDEN    22 __dso_handle
+    28: 000000000000113d    71 FUNC    GLOBAL DEFAULT   11 sum
+    29: 0000000000002000     4 OBJECT  GLOBAL DEFAULT   13 _IO_stdin_used
+    30: 0000000000004028     0 NOTYPE  GLOBAL DEFAULT   23 _end
+    31: 0000000000001020    38 FUNC    GLOBAL DEFAULT   11 _start
+    32: 0000000000004020     0 NOTYPE  GLOBAL DEFAULT   23 __bss_start
+    33: 0000000000001119    36 FUNC    GLOBAL DEFAULT   11 main
+    34: 0000000000004020     0 OBJECT  GLOBAL HIDDEN    22 __TMC_END__
+    35: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_registerTMC[...]
+    36: 0000000000000000     0 FUNC    WEAK   DEFAULT  UND __cxa_finalize@G[...]
+    37: 0000000000001000     0 FUNC    GLOBAL HIDDEN    10 _init
+```
+
+В `mainstatic` неразрешённых символов нет
+
+При таком подходе библиотека загружается лишь один раз в память. Поэтому размер итогового бинарника будет меньше размера статического:
+
+```sh
+$ du -sh main
+16K     main
+```
+
+Более того, динамическая линковка ***может*** быть быстрее, так как разделяемая библиотека скорее, чем статическая окажется в кэше
+
+##### Пример описания сегментов
+
+Для динамически-слинкованного бинарника рассмотрим сегменты
+
+```sh
+$ readelf --segments -W main
+Elf file type is DYN (Position-Independent Executable file)
+Entry point 0x1020
+There are 14 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  PHDR           0x000040 0x0000000000000040 0x0000000000000040 0x000310 0x000310 R   0x8
+  INTERP         0x0003b4 0x00000000000003b4 0x00000000000003b4 0x00001c 0x00001c R   0x1
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+  LOAD           0x000000 0x0000000000000000 0x0000000000000000 0x000608 0x000608 R   0x1000
+  LOAD           0x001000 0x0000000000001000 0x0000000000001000 0x000191 0x000191 R E 0x1000
+  LOAD           0x002000 0x0000000000002000 0x0000000000002000 0x0000bc 0x0000bc R   0x1000
+  LOAD           0x002e10 0x0000000000003e10 0x0000000000003e10 0x000210 0x000218 RW  0x1000
+  DYNAMIC        0x002e20 0x0000000000003e20 0x0000000000003e20 0x0001a0 0x0001a0 RW  0x8
+  NOTE           0x000350 0x0000000000000350 0x0000000000000350 0x000040 0x000040 R   0x8
+  NOTE           0x000390 0x0000000000000390 0x0000000000000390 0x000024 0x000024 R   0x4
+  NOTE           0x00209c 0x000000000000209c 0x000000000000209c 0x000020 0x000020 R   0x4
+  GNU_PROPERTY   0x000350 0x0000000000000350 0x0000000000000350 0x000040 0x000040 R   0x8
+  GNU_EH_FRAME   0x002004 0x0000000000002004 0x0000000000002004 0x000024 0x000024 R   0x4
+  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x10
+  GNU_RELRO      0x002e10 0x0000000000003e10 0x0000000000003e10 0x0001f0 0x0001f0 R   0x1
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     
+   01     .interp 
+   02     .note.gnu.property .note.gnu.build-id .interp .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn 
+   03     .init .text .fini 
+   04     .rodata .eh_frame_hdr .eh_frame .note.ABI-tag 
+   05     .init_array .fini_array .dynamic .got .got.plt .data .bss 
+   06     .dynamic 
+   07     .note.gnu.property 
+   08     .note.gnu.build-id 
+   09     .note.ABI-tag 
+   10     .note.gnu.property 
+   11     .eh_frame_hdr 
+   12     
+   13     .init_array .fini_array .dynamic .got .got.plt 
+```
+
+`PHDR` ([`p_type` = `PT_PHDR`](#структура-program-headerа)) описывает маппинги секций в сегменты. К примеру, в сегмент `03` (`LOAD` со сдвигом `0x1000`) будут помещены секции `.init`, `.text`, `.fini`. Флаги, которые получат эти страницы - `R E` (`read` & `execute`) соответствуют сегменту исполняемого кода, что, действительно, так.
+
+Интересный момент про `.bss`: она будет размещена в сегменте `05` (оффсет `0x2e10`). `FileSiz` > `MemSiz`. Всё, потому что `.bss` не хранится в бинарном файле целиком, там указан лишь размер этой секции.
