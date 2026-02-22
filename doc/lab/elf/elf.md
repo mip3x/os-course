@@ -22,6 +22,9 @@
 6) [Курс CS 361 (в начале есть полезные видео по символам, ELF, линковке, PIC, GOT, PLT и т.д.)](https://youtube.com/playlist?list=PLhy9gU5W1fvUND_5mdpbNVHC1WCIaABbP&si=sNfhM18q1MtCw_a6)
 7) [Статья `Linkers and Loaders`](https://www.linuxjournal.com/article/6463)
 8) [Глава 7 из книги `Computer Systems: A Programmer's Perspective`](https://www.cs.sfu.ca/~ashriram/Courses/CS295/assets/books/CSAPP_2016.pdf)
+9) [Статья про `GOT` (`Global Offset Table`)](https://maskray.me/blog/2021-08-29-all-about-global-offset-table)
+10) [Статья про `PLT` (`Procedure Linkage Table`)](https://maskray.me/blog/2021-09-19-all-about-procedure-linkage-table)
+11) [Перенаправление функций в разделяемых `ELF`](https://habr.com/ru/articles/106107/)
 
 ## Основные сущности
 
@@ -326,7 +329,7 @@ PT_PHDR         - 6 - LOCATION OF PROGRAM HEADER TABLE IN MEMORY
 PT_TLS          - 7 - THREAD LOCAL STORAGE INFORMATION
 ```
 
-Касательно `PT_INTERP`: обычно есть у динамически линкуемых исполняемых файлов, у `shared libraries` его обычно нет.
+Касательно `PT_INTERP`: необходим динамически линкуемым исполняемым файлам. В этом сегменте хранится указатель на динамический линковщик.
 
 `p_offset` содержит смещение сегмента относительно начала самого `ELF`
 
@@ -1078,3 +1081,127 @@ Program Headers:
 `PHDR` ([`p_type` = `PT_PHDR`](#структура-program-headerа)) описывает маппинги секций в сегменты. К примеру, в сегмент `03` (`LOAD` со сдвигом `0x1000`) будут помещены секции `.init`, `.text`, `.fini`. Флаги, которые получат эти страницы - `R E` (`read` & `execute`) соответствуют сегменту исполняемого кода, что, действительно, так.
 
 Интересный момент про `.bss`: она будет размещена в сегменте `05` (оффсет `0x2e10`). `FileSiz` > `MemSiz`. Всё, потому что `.bss` не хранится в бинарном файле целиком, там указан лишь размер этой секции.
+
+## PLT (Procedure Linkage Table) & GOT (Global Offset Table)
+
+`PLT` - хэлперы вызова функций, внутри находятся заглушки: каждая запись позволит либо прыгнуть в существующую функцию, либо вызвать динамический линкер, который будет пытаться найти эту самую функцию.
+
+`GOT` - таблица указателей, в которой хранится либо адрес функции, либо адрес динамического линковщика, чтобы, собственно, найти эту функцию.
+
+Рассмотрим пример `helloworld.c`:
+
+```c
+#include <stdio.h>
+
+int main() {
+    printf("Hello world!");
+    printf("Hello world again");
+    return 0;
+}
+```
+
+Скомпилируем как `no-pie` и рассмотрим с помощью `gdb`. Скомпилируем позиционно-зависимый код, но не будем применять `-static`. Тогда будет применяться динамическая линковка:
+
+```sh
+$ gcc -fno-pie -no-pie -g -o helloworld.out helloworld.c
+$ gdb ./helloworld.out
+Reading symbols from ./helloworld.out...
+(gdb) b helloworld.c:4
+Breakpoint 1 at 0x40112a: file helloworld.c, line 4.
+(gdb) b helloworld.c:5
+Breakpoint 2 at 0x401139: file helloworld.c, line 5.
+(gdb) r
+...
+Breakpoint 1, main () at helloworld.c:4
+4           printf("Hello world!");
+(gdb) disas main
+Dump of assembler code for function main:
+   0x0000000000401126 <+0>:     push   %rbp
+   0x0000000000401127 <+1>:     mov    %rsp,%rbp
+=> 0x000000000040112a <+4>:     mov    $0x402004,%edi
+   0x000000000040112f <+9>:     mov    $0x0,%eax
+   0x0000000000401134 <+14>:    call   0x401030 <printf@plt>
+   0x0000000000401139 <+19>:    mov    $0x402011,%edi
+   0x000000000040113e <+24>:    mov    $0x0,%eax
+   0x0000000000401143 <+29>:    call   0x401030 <printf@plt>
+   0x0000000000401148 <+34>:    mov    $0x0,%eax
+   0x000000000040114d <+39>:    pop    %rbp
+   0x000000000040114e <+40>:    ret
+End of assembler dump.
+```
+
+Обращение к `printf` происходит по одному и тому же адресу `0x401030`. Выведем список секций и увидим, что этот адрес находится в секции `.plt`:
+
+```sh
+$ readelf --sections -W helloworld.out
+...
+  [12] .plt              PROGBITS        0000000000401020 001020 000020 10  AX  0   0 16
+...
+```
+
+Посмотрим, что там находится через `gdb`:
+
+```sh
+(gdb) disas 'printf@plt'
+Dump of assembler code for function printf@plt:
+   0x0000000000401030 <+0>:     jmp    *0x2fca(%rip)        # 0x404000 <printf@got.plt>
+   0x0000000000401036 <+6>:     push   $0x0
+   0x000000000040103b <+11>:    jmp    0x401020
+End of assembler dump.
+```
+
+Здесь есть 3 инструкции: прыжок в `.got.plt`, пуш нуля на стек, прыжок на начало `.plt`.
+
+Куда происходит первый прыжок? `gdb` даёт хинт: эта адресация относительно `PC` резолвится в адрес `0x404000`. Посмотрим, что внутри:
+
+```sh
+(gdb) p/x *(void**)0x404000
+$1 = 0x401036
+```
+
+Что является адресом инструкции `push $0x0`, то есть следующей за прыжком инструкции.
+
+То есть, что здесь происходит? Сначала прыжок в `PLT`, затем прыжок в `GOT`, в которой находится адрес следующей инструкии. Звучит не очень логично. Зачем это всё? Потому что первый раз, когда мы вызываем `printf`, потому что третья инструкция `PLT`-entry вызывает динамический линковщик, который пытается найти `GOT`-entry для `printf` и подставить адрес первой инструкции `printf` в `0x404000` (в данном примере), который сейчас указывает на следующую за первым прыжком инструкцию.
+
+Продолжим дебаггинг:
+
+```sh
+(gdb) c
+Continuing.
+
+Breakpoint 2, main () at helloworld.c:5
+5           printf("Hello world again");
+(gdb) disas 'printf@plt'
+Dump of assembler code for function printf@plt:
+   0x0000000000401030 <+0>:     jmp    *0x2fca(%rip)        # 0x404000 <printf@got.plt>
+   0x0000000000401036 <+6>:     push   $0x0
+   0x000000000040103b <+11>:    jmp    0x401020
+End of assembler dump.
+(gdb) p/x *(void**)0x404000
+$2 = 0x7ffff7c5aac0
+```
+
+Теперь адрес указывает на `mmap`-регион в памяти процесса - то место, куда загружаются разделяемые библиотеки.
+
+Удостоверимся в том, что новый адрес указывает на первую инструкцию `printf`:
+
+```sh
+(gdb) disas (void**)0x7ffff7c5aac0
+Dump of assembler code for function printf:
+   0x00007ffff7c5aac0 <+0>:     endbr64
+   0x00007ffff7c5aac4 <+4>:     push   %rbp
+   0x00007ffff7c5aac5 <+5>:     mov    %rdi,%r10
+   0x00007ffff7c5aac8 <+8>:     mov    %rsp,%rbp
+   0x00007ffff7c5aacb <+11>:    sub    $0xd0,%rsp
+...
+```
+
+Но что же такое `push $0x0`? Это пуш значения `0` на стек, да, но для чего? 0 - адрес `printf` в таблице релокаций, который необходим для работы динамического линковщика:
+
+```sh
+$ readelf --relocs helloworld.out
+...
+Relocation section '.rela.plt' at offset 0x5d8 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000404000  000300000007 R_X86_64_JUMP_SLO 0000000000000000 printf@GLIBC_2.2.5 + 0
+```
