@@ -21,6 +21,7 @@
 5) [Спецификация `ELF`](https://refspecs.linuxfoundation.org/elf/elf.pdf)
 6) [Курс CS 361 (в начале есть полезные видео по символам, ELF, линковке, PIC, GOT, PLT и т.д.)](https://youtube.com/playlist?list=PLhy9gU5W1fvUND_5mdpbNVHC1WCIaABbP&si=sNfhM18q1MtCw_a6)
 7) [Статья `Linkers and Loaders`](https://www.linuxjournal.com/article/6463)
+8) [Глава 7 из книги `Computer Systems: A Programmer's Perspective`](https://www.cs.sfu.ca/~ashriram/Courses/CS295/assets/books/CSAPP_2016.pdf)
 
 ## Основные сущности
 
@@ -820,6 +821,10 @@ $ objdump -dx -M intel main
 Посчитаем вручную относительно `RIP = 0x1128`:
 
 `0x4010 - 0x1128` = `0x2ee8'` - именно этот адрес и записан в дизассемблированном коде
+
+Но зачем вообще нужен `addend` в таком случае? Ответ в цитате:
+
+> Why do we need addends: addends are to reduce the size of the symbol table. Instead of having one entry for every array + offset, in the symbol table, many entries in the relocation table can reference a single value in the symbol table with different addends. It is about putting related data close to where it starts to become specialized rather than having a generalized but bloated storage layout. 
 
 <details>
 
