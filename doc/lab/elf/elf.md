@@ -439,7 +439,7 @@ typedef struct elf64_sym {
 
 `st_shndx` содержит индекс секции, к которой относится символ (колонка `[Nr]` в выводе `readelf --sections <elf>`). Также, существуют некоторые специальные значения индексов (`UND`, `COM`, `ABS` и другие): эти символы пока не принадлежат ни одной из секций и будут размещены в псевдосекции. Колонка `Ndx` в выводе `readelf --symbols <elf>`
 
-`st_value` содержит значение символа. Колонка `Value` в выводе `readelf --symbols <elf>`
+`st_value` содержит значение символа (разное для разных типов `ELF`. К примеру, для `REL` значение - сдвиг относительно начала секции). Колонка `Value` в выводе `readelf --symbols <elf>`
 
 `st_size` содержит размер символа. Колонка `Size` в выводе `readelf --symbols <elf>`
 
@@ -688,31 +688,34 @@ main_fixed: libsum.a main.c
 
 Чтобы понять, что такое релокация, рассмотрим пример более простой программы:
 
-`values.h`:
+`sum.h`:
 
 ```h
-extern int value;
+#pragma once
 
-int getValue();
+int sum(int *ptr, int len);
 ```
 
-`values.c`:
+`sum.c`:
 
 ```c
-int value = 42;
-
-int getValue() {
-    return value;
+int sum(int *ptr, int len) {
+    int result = 0;
+    for (int i = 0; i < len; result += ptr[i++]);
+    return result;
 }
 ```
 
 `main.c`:
 
 ```c
-#include "values.h"
+#include "sum.h"
+
+int array[4] = {1,2,3,4};
 
 int main() {
-    return getValue();
+    int val = sum(array, 2);
+    return val;
 }
 ```
 
@@ -732,121 +735,218 @@ main.o:     file format elf64-x86-64
 Disassembly of section .text:
 
 0000000000000000 <main>:
-   0:   55                      push   rbp
-   1:   48 89 e5                mov    rbp,rsp
-   4:   e8 00 00 00 00          call   9 <main+0x9>
-                        5: R_X86_64_PLT32       getValue-0x4
-   9:   5d                      pop    rbp
-   a:   c3                      ret
-
+   0:	55                   	push   rbp
+   1:	48 89 e5             	mov    rbp,rsp
+   4:	48 83 ec 10          	sub    rsp,0x10
+   8:	48 8d 05 00 00 00 00 	lea    rax,[rip+0x0]        # f <main+0xf>
+			b: R_X86_64_PC32	array-0x4
+   f:	be 02 00 00 00       	mov    esi,0x2
+  14:	48 89 c7             	mov    rdi,rax
+  17:	e8 00 00 00 00       	call   1c <main+0x1c>
+			18: R_X86_64_PLT32	sum-0x4
+  1c:	89 45 fc             	mov    DWORD PTR [rbp-0x4],eax
+  1f:	8b 45 fc             	mov    eax,DWORD PTR [rbp-0x4]
+  22:	c9                   	leave
+  23:	c3                   	ret
 ```
 
-Итак, `релокация` - заметка для линковщика, требующая от него разрешения (резолвинга) символа и показывающая, на какой сдвиг должен быть размещён символ и какого он должен быть размер. Компилятор не знает, где взять символ `getValue`: он оставляет эту задачу линковщику. 
+Итак, `релокация` - заметка для линковщика, требующая от него разрешения (резолвинга) символа и показывающая, на какой сдвиг должен быть размещён символ и какого он должен быть размер. Компилятор не знает, где взять символ `sum`: он оставляет эту задачу линковщику. 
 
 Релокации не содержатся в секции машинных инструкций. `objdump` берёт их из секции `.rela.text`. Посмотрим на неё:
 
 ```sh
 $ readelf --relocs main.o
-Relocation section '.rela.text' at offset 0x180 contains 1 entry:
+Relocation section '.rela.text' at offset 0x1a8 contains 2 entries:
   Offset          Info           Type           Sym. Value    Sym. Name + Addend
-000000000005  000500000004 R_X86_64_PLT32    0000000000000000 getValue - 4
+00000000000b  000300000002 R_X86_64_PC32     0000000000000000 array - 4
+000000000018  000500000004 R_X86_64_PLT32    0000000000000000 sum - 4
 
-Relocation section '.rela.eh_frame' at offset 0x198 contains 1 entry:
+Relocation section '.rela.eh_frame' at offset 0x1d8 contains 1 entry:
   Offset          Info           Type           Sym. Value    Sym. Name + Addend
 000000000020  000200000002 R_X86_64_PC32     0000000000000000 .text + 0
 ```
 
-Действительно, `getValue` находится в секции релокаций. Здесь же находится и сдвиг: `5` - отсюда `objdump` его и берёт.
+Действительно, `sum` находится в секции релокаций. Здесь же находится и сдвиг относительно начала секции `.text`: `18` - отсюда `objdump` его и берёт.
 
-Линковщик обходит таблицу релокаций `main.o` и пытается найти символ `getValue` в таблице символов `values.o`.
+Линковщик обходит таблицу релокаций `main.o` и пытается найти символ `sum` в таблице символов `sum.o`.
 
 Соберём программу и посмотрим на вывод: 
 
 ```sh
-gcc -c main.c values.c
-gcc main.o values.o
-./a.out
+gcc -c main.c sum.c
+gcc main.o sum.o -o main
+./main
 echo $?
-> 42
+> 3
 ```
 
-Всё верно. Теперь посмотрим на символы из `values.o`:
+Всё верно
+
+#### Типы релокации
+
+В таблице релокаций в колонке `Type` можно увидеть тип релокации 
+
+##### `R_X86_64_PC32`
+
+`R` - `relocation`, `X86_64` - архитектура, `PC32` - вид адресации (в данном случае 32-битное смещение относительно `Program Counter` (регистра `RIP` в `X86_64`))
+
+Смещение вычисляется по следующей формуле:
+
+```
+S + A - P
+```
+
+где `S` - адрес символа (`Symbol`), `A` - смещение внутри инструкции (`Addend`), `P` - адрес места, куда пишется значение
+
+Рассмотрим дамп исполняемого бинарника:
 
 ```sh
-$ nm values.o
-0000000000000000 T getValue
-0000000000000000 D value
+$ objdump -dx -M intel main
+```
+
+Возьмём `main` из секции `.text`:
+
+```
+0000000000001119 <main>:
+    1119:       55                      push   rbp
+    111a:       48 89 e5                mov    rbp,rsp
+    111d:       48 83 ec 10             sub    rsp,0x10
+    1121:       48 8d 05 e8 2e 00 00    lea    rax,[rip+0x2ee8]        # 4010 <array>
+    1128:       be 02 00 00 00          mov    esi,0x2
+    112d:       48 89 c7                mov    rdi,rax
+    1130:       e8 08 00 00 00          call   113d <sum>
+    1135:       89 45 fc                mov    DWORD PTR [rbp-0x4],eax
+    1138:       8b 45 fc                mov    eax,DWORD PTR [rbp-0x4]
+    113b:       c9                      leave
+    113c:       c3                      ret
+```
+
+И найдём символ `array` в секции `.data`:
+
+```
+0000000000004010 g     O .data  0000000000000010              array
+```
+
+Посчитаем вручную по формуле `S + A - P`: 
+    - `S = 0x4010`
+    - `A = -4`
+    - `P = 0x1124`
+
+`0x4010 - 0x4 - 0x1124` = `0x2ee8'` - именно этот адрес и записан в дизассемблированном коде
+
+<details>
+
+<summary>Ищем данные array через hexdump</summary>
+
+```sh
+$ nm main.o
+0000000000000000 D array
+...
+```
+
+Итак, нам известно, что `array` попадёт в секцию `.data`. Найдём её оффсет относительно других секций и оффсет самого `array` в ней.
+
+```sh
+$ readelf -SW main.o
+There are 13 section headers, starting at offset 0x260:
+
+Section Headers:
+  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
+  ...
+  [ 3] .data             PROGBITS        0000000000000000 000068 000010 00  WA  0   0 16
+  ...
+```
+
+Сдвиг относительно начала файла - `0x68`, а размер - `0x10 = 16` байт, что соответствует размеру массива `array`, состоящего из 4ёх 4-байтных символов (`4 * 4 = 16`). Всё равно попытаемся найти сдвиг `array` относительно секции `.data`: он должен оказаться нулевым.
+
+```sh
+$ readelf --syms main.o
+
+Symbol table '.symtab' contains 6 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS main.c
+     2: 0000000000000000     0 SECTION LOCAL  DEFAULT    1 .text
+     3: 0000000000000000    16 OBJECT  GLOBAL DEFAULT    3 array
+     4: 0000000000000000    36 FUNC    GLOBAL DEFAULT    1 main
+     5: 0000000000000000     0 NOTYPE  GLOBAL DEFAULT  UND sum
+```
+
+Как уже упоминалось, значение в таблице релокаций для `REL`-файлов - это сдвиг относительно начала секции. И он действительно равен нулю. Отлично
+
+Теперь нужно прочитать дамп и найти там данные массива:
+
+```sh
+$ hexdump -C -s 0x68 -n 0x10 main.o
+00000068  01 00 00 00 02 00 00 00  03 00 00 00 04 00 00 00  |................|
+00000078
+```
+
+Действительно, тут внутри данные из программы на `C`: `1, 2, 3, 4`
+
+</details>
+
+#### Что делает `strip`?
+
+Теперь посмотрим на символы из `main.o`:
+
+```sh
+$ nm main.o
+0000000000000000 D array
+0000000000000000 T main
+                 U sum
 ```
 
 Теперь узнаем, что НА САМОМ ДЕЛЕ делает программа `strip`:
 
 ```sh
-$ strip values.o
-$ nm values.o
-nm: values.o: no symbols
+$ strip main.o
+$ nm main.o
+nm: main.o: no symbols
 ```
 
 Да, одной из задач, которую выполняет `strip`, является обрезание символов (секции `.symtab`). Но секция кода ведь до сих пор там. При линковке ожидаемо получаем ошибку:
 
 ```sh
-$ gcc main.o values.o
-/usr/bin/ld: error in values.o(.eh_frame); no .eh_frame_hdr table will be created
-/usr/bin/ld: main.o: in function `main':
-main.c:(.text+0x5): undefined reference to `getValue'
+$ gcc main.o sum.o
+/usr/bin/ld: error in main.o(.eh_frame); no .eh_frame_hdr table will be created
+/usr/bin/ld: /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/Scrt1.o: in function `_start':
+(.text+0x1b): undefined reference to `main'
 collect2: error: ld returned 1 exit status
 ```
 
 ## Линковка
 
-Кажется, нужно разгрузить функцию `getValue()`. Добавим хэлпер в `values.c`:
+Кажется, нужно разгрузить функцию `main()`. Добавим хэлпер в `main.c`:
 
 ```c
-int value = 42;
+#include "sum.h"
+
+int array[4] = {1,2,3,4};
 
 static int helper() {
-    return value;
+    int val = sum(array, 2);
+    return val;
 }
 
-int getValue() {
+int main() {
     return helper();
 }
 ```
 
-Скомпилируем `values.c` заново и запустим `nm`:
+Скомпилируем `main.c` заново и запустим `nm`:
 
 ```sh
-$ nm values.o
-000000000000000c T getValue
+$ nm main.o
+0000000000000000 D array
 0000000000000000 t helper
-0000000000000000 D value
+0000000000000024 T main
+                 U sum
 ```
 
-Символы `getValue` и `value` остались прежними, появился символ `helper`, который имеет обозначение `t` в нижнем регистре. Это означает, что символ попадёт также в секцию `.text`, но к нему будет применена внутренняя (`internal`) линковка. Верхний регистр означает внешнюю (`external`) линковку. 
+Символы `array`, `main` и `sum` остались прежними, появился символ `helper`, который имеет обозначение `t` в нижнем регистре. Это означает, что символ попадёт также в секцию `.text`, но к нему будет применена внутренняя (`internal`) линковка. Верхний регистр означает внешнюю (`external`) линковку. 
 
 Линковку иначе можно называть связыванием. Итак, внешнее связывание подразумевает доступность переменной во всех единицах трансляции, внутреннее - только в текущей.
 
 К чему это? [Тут](#разбиение-символов-по-виду-локальности-биндинг) шла речь о том, что символы можно разделить на локальные и глобальные. Так вот, глобальные символы разрешаются внешней линковкой, а локальные - внутренней.
 
-Добавим хэлпер также и в `main.c`:
-
-```c
-#include "values.h"
-#include <stdio.h>
-
-static void helper() {
-    printf("USAGE: ...");
-}
-
-int main() {
-    return getValue();
-}
-```
-
-```sh
-$ gcc -c main.c
-$ nm main.o
-                 U getValue
-0000000000000000 t helper
-000000000000001b T main
-                 U printf
-```
