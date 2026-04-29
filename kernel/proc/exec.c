@@ -28,15 +28,16 @@ int exec(char *path, char **argv) {
     pagetable_t pagetable = 0, oldpagetable;
     struct proc *p = myproc();
 
-#if KDEBUG == 1
-    // print out binary name
-    printf("exec %s\n", path);
-#endif
-
     begin_op();
 
     // get randomize_va_space flag
     uint8 randomize_va_space = 1; // TODO make file-flag
+
+#if KDEBUG == 1
+    // print out binary name & randomize_va_space flag
+    printf("exec %s\n", path);
+    printf("aslr: %d\n", randomize_va_space);
+#endif
 
     if ((ip = namei(path)) == 0) {
         end_op();
@@ -58,20 +59,32 @@ int exec(char *path, char **argv) {
     for (i = 0, off = elf.phoff; i < elf.phnum; i++, off += sizeof(ph)) {
         if (readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
             goto bad;
+
+        // _init example:
+        // e.g. ph.vaddr = 0x2ee8
+        uint64 va0 = PGROUNDDOWN(ph.vaddr);     // va0 = 0x2000
+        uint64 pageoff = ph.vaddr - va0;        // pageoff = 0xee8
+        uint64 offset0 = ph.off - pageoff;      // offset0 = 0x1000
+        uint64 filesz0 = ph.filesz + pageoff;   // filesz0 = 0x128 + 0xee8
+
         if (ph.type != ELF_PROG_LOAD)
             continue;
         if (ph.memsz < ph.filesz)
             goto bad;
         if (ph.vaddr + ph.memsz < ph.vaddr)
             goto bad;
-        if (ph.vaddr % PGSIZE != 0)
+        if (ph.off < pageoff)
             goto bad;
         uint64 sz1;
         if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz,
                             flags2perm(ph.flags))) == 0)
             goto bad;
         sz = sz1;
-        if (loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+        // loadseg argument 'va' must be page-aligned
+        //   it means we load more bytes operating with pages so
+        //   that ph.vaddr access will be to the same virtual address
+        //   as it was supposed when creating ELF
+        if (loadseg(pagetable, va0, ip, offset0, filesz0) < 0)
             goto bad;
     }
     iunlockput(ip);
