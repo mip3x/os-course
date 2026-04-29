@@ -79,7 +79,7 @@ CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 &
 CFLAGS += -fPIE
 
 LDFLAGS = -z max-page-size=4096
-LDUSERFLAGS = -pie
+LDUSERFLAGS = -pie -e start
 
 $K/kernel: $(OBJS) $K/entry/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/entry/kernel.ld -o $K/kernel $(OBJS) 
@@ -99,6 +99,8 @@ ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 _%: %.o $(ULIB)
 # 	$(LD) $(LDFLAGS) ${LDUSERFLAGS} -T $U/user.ld -o $@ $^
+# 	in ASLR linker script user.ld is not used anymore
+# 	-e start is needed to set entry point address in ELF to 'start' symbol
 	$(LD) $(LDFLAGS) ${LDUSERFLAGS} -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
 	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
