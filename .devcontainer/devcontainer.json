@@ -1,5 +1,5 @@
 {
-    "image": "vityamand/xv6:latest",
+    "image": "os-course-dev:latest",
     "customizations": {
         "vscode": {
             "extensions": [
