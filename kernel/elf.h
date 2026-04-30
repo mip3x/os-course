@@ -37,6 +37,27 @@ struct proghdr {
     uint64 align;
 };
 
+// Section header
+struct secthdr {
+    uint32 name;
+    uint32 type;
+    uint64 flags;
+    uint64 addr;
+    uint64 offset;
+    uint64 size;
+    uint32 link;
+    uint32 info;
+    uint64 addralign;
+    uint64 entsize;
+};
+
+// Relocation
+struct relocation {
+    uint64 offset;
+    uint64 info;
+    uint64 addend;
+};
+
 // Values for Proghdr type
 #define ELF_PROG_LOAD 1
 
@@ -44,3 +65,11 @@ struct proghdr {
 #define ELF_PROG_FLAG_EXEC 1
 #define ELF_PROG_FLAG_WRITE 2
 #define ELF_PROG_FLAG_READ 4
+
+// Types for Secthdr type
+#define ELF_SECT_TYPE_RELA 4
+#define ELF_RELA_TYPE(i) ((i) & 0xffffffffL)
+
+// Types of Relocations
+#define R_RISCV_RELATIVE 3
+
