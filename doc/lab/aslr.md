@@ -243,3 +243,127 @@ kvmmap(kpgtbl, VIRTIO1, VIRTIO1, PGSIZE, PTE_R | PTE_W);
 ## Устройство ELF-файла
 
 Для понимания таблиц релокация необходима краткая справка касательно устройства `ELF`-файла. Она описана в [этом файле](./elf/elf.md).
+
+## Рандомизация стека
+
+Сдвинуть стек возможно даже и без `PIE`-бинарных файлов, это относительно несложно сделать: достаточно аллоцировать дополнительно случайное число страниц
+
+`exec.c`:
+
+```c
+...
+// Allocate random number of pages at the next page boundary.
+// Make the last - 1 inaccessible as a stack guard.
+// Use the last as the user stack.
+sz = PGROUNDUP(sz);
+// page-level randomization from 1 to 256 pages
+uint64 stack_offset = randomize_va_space ? get_random(1, 257) : 0;
+uint64 sz1;
+if ((sz1 = uvmalloc(pagetable, sz, sz + (stack_offset + USERSTACK + 1) * PGSIZE, PTE_W)) ==
+    0)
+    goto bad;
+sz = sz1;
+...
+```
+
+## Рандомизация `code`, `rodata`, `data`, `heap`
+
+Для рандомизации адресов данных секций уже недостаточно просто сдвинуть адрес начала секции
+
+Обычные `EXEC`-бинарники уже содержат фиксированные виртуальные адреса, поэтому сначала пользовательские программы необходимо перевести в формат `PIE` (`Position Independent Executable`)
+
+В `Makefile` для user-программ добавлены флаги:
+
+```Makefile
+CFLAGS += -fPIE
+LDUSERFLAGS = -pie -e start
+```
+
+`-fPIE` заставляет компилятор генерировать `position-independent` код (`PIC`). `-pie` заставляет линкер собрать итоговый `ELF` как `DYN`. Флаг `-e start` нужен, чтобы `entry point` `ELF` указывал на функцию `start` из `user/ulib.c`: именно она вызывает `main()`, а затем `exit()`. Без этого исполняемый файл мог бы начинать выполнение не с `xv6`-старта
+
+Старый linker script `user/user.ld` для PIE не используется, потому что он задавал фиксированную раскладку с адреса `0`. Вместо него применяется стандартный linker script `riscv64-linux-gnu-ld` (он применяется по умолчанию при линковке)
+
+### Случайная база загрузки
+
+В `exec()` теперь выбирается случайная база загрузки:
+
+```c
+uint64 load_base = randomize_va_space ? get_random(1, 257) * PGSIZE : 0;
+```
+
+Для каждого `LOAD`-сегмента реальный виртуальный адрес считается так:
+
+```c
+real_va = load_base + ph.vaddr;
+```
+
+`Entry point` также сдвигается на эту базу:
+
+```c
+p->trapframe->epc = load_base + elf.entry;
+```
+
+Именно поэтому адреса `main`, глобальных переменных и строк начинают отличаться при разных запусках
+
+### Невыровненные LOAD-сегменты
+
+`PIE` исполняемые файлы могут иметь `LOAD`-сегменты, у которых `ph.vaddr` не выровнен по странице, например:
+
+```sh
+LOAD Offset 0x1ee8 VirtAddr 0x2ee8
+```
+
+Старая версия `exec()` требовала выравнивания виртуального адреса загрузки в память по размеру страницы:
+
+```c
+ph.vaddr % PGSIZE == 0
+```
+
+Для `PIE` это неверно. Так как операции маппинга и аллокации, реализованные в `xv6` требуют выровнивания виртуального адреса по странице, то все виртуальные адреса `LOAD`-секций были округлены до адреса страниц. С помощью изменения сдвигов в ходе чтения файла все необходимые данные будут загружены в память, а обращение по виртуальным адресам будет успешно разрешено:
+
+```c
+uint64 pageoff = ph.vaddr - PGROUNDDOWN(ph.vaddr);
+uint64 va0 = load_base + PGROUNDDOWN(ph.vaddr);
+uint64 offset0 = ph.off - pageoff;
+uint64 filesz0 = ph.filesz + pageoff;
+```
+
+### Релокации R_RISCV_RELATIVE
+
+Некоторые PIE-бинарники содержат секцию `.rela.dyn` с релокациями типа `R_RISCV_RELATIVE`. Такая релокация означает: по адресу `load_base + offset` нужно записать значение `load_base + addend`
+
+В `exec()` после загрузки всех `LOAD`-сегментов читаются section headers, находятся секции типа `SHT_RELA`, а затем обрабатываются записи:
+
+```c
+uint64 value = load_base + relocation.addend;
+copyout(pagetable, load_base + relocation.offset, (char *)&value, sizeof(value));
+```
+
+Это нужно, например, для глобальных указателей вида:
+
+```c
+char *argv[] = {"sh", 0};
+```
+
+Без обработки релокации указатель продолжал бы указывать на старый адрес, рассчитанный для базы `0`
+
+### Проверка
+
+После изменений `aslrcheck` показывает, что меняются адреса кода, данных, строк, стека и heap:
+
+```text
+$ aslrcheck
+code main:   0x000000000002E27A
+data global: 0x0000000000031000
+stack local: 0x000000000006AFAC
+heap malloc: 0x000000000007AFF0
+ro data:     0x000000000002EC38
+$ aslrcheck
+code main:   0x000000000001F27A
+data global: 0x0000000000022000
+stack local: 0x0000000000117FAC
+heap malloc: 0x0000000000127FF0
+ro data:     0x000000000001FC38
+```
+
+Смещения внутри PIE при этом сохраняются. Например, `main` по-прежнему находится по смещению `0x27a` от базы загрузки, но сама база каждый раз выбирается случайно
