@@ -1,5 +1,5 @@
 {
-    "image": "os-course-dev:latest",
+    "image": "yacr/os-course-dev:latest",
     "customizations": {
         "vscode": {
             "extensions": [
