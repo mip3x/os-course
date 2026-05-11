@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: yacr/yacr/os-course-dev:latest
+      image: yacr/os-course-dev:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
