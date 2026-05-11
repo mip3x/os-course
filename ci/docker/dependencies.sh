@@ -18,6 +18,7 @@ apt-get update
 apt-get install -y \
     build-essential \
     gcc-riscv64-unknown-elf \
+    gcc-riscv64-linux-gnu \
     binutils-riscv64-unknown-elf \
     gdb-multiarch \
     qemu-system-misc \

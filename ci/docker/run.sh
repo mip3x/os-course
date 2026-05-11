@@ -4,8 +4,10 @@ set -e
 
 cd "$(dirname "$0")"
 
+IMAGE_NAME="os-course-dev:latest"
+
 docker run \
     -it \
     --rm \
-    --volume $(pwd)/../..:/xv6 vityamand/xv6:latest \
+    --volume $(pwd)/../..:/xv6 "$IMAGE_NAME" \
     /bin/bash

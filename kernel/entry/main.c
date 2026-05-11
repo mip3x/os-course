@@ -19,6 +19,7 @@ void main() {
         kvminithart();      // turn on paging
         procinit();         // process table
         trapinit();         // trap vectors
+        randominit();       // kernel seed
         trapinithart();     // install kernel trap vector
         plicinit();         // set up interrupt controller
         plicinithart();     // ask PLIC for device interrupts
@@ -26,6 +27,11 @@ void main() {
         iinit();            // inode table
         fileinit();         // file table
         virtio_disk_init(); // emulated hard disk
+
+        // true random seed from host
+        virtio_rng_init();
+        virtio_rng_request_seed();
+
         userinit();         // first user process
         __sync_synchronize();
         started = 1;

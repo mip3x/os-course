@@ -15,8 +15,13 @@
 // from qemu virtio_mmio.h
 #define VIRTIO_MMIO_MAGIC_VALUE 0x000 // 0x74726976
 #define VIRTIO_MMIO_VERSION 0x004     // version; should be 2
-#define VIRTIO_MMIO_DEVICE_ID 0x008   // device type; 1 is net, 2 is disk
-#define VIRTIO_MMIO_VENDOR_ID 0x00c   // 0x554d4551
+
+// virtio types here:
+// https://elixir.bootlin.com/linux/v6.18.6/source/include/uapi/linux/virtio_ids.h
+#define VIRTIO_MMIO_DEVICE_ID                                                  \
+    0x008 // device type; 1 is net, 2 is disk, 4 is rng
+
+#define VIRTIO_MMIO_VENDOR_ID 0x00c // 0x554d4551
 #define VIRTIO_MMIO_DEVICE_FEATURES 0x010
 #define VIRTIO_MMIO_DRIVER_FEATURES 0x020
 #define VIRTIO_MMIO_QUEUE_SEL 0x030     // select queue, write-only

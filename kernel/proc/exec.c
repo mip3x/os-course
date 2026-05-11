@@ -25,10 +25,21 @@ int exec(char *path, char **argv) {
     struct elfhdr elf;
     struct inode *ip;
     struct proghdr ph;
+    struct secthdr sh;
+    struct relocation relocation;
     pagetable_t pagetable = 0, oldpagetable;
     struct proc *p = myproc();
 
     begin_op();
+
+    // get randomize_va_space flag
+    uint8 randomize_va_space = 1; // TODO make file-flag
+
+#if KDEBUG == 1
+    // print out binary name & randomize_va_space flag
+    printf("exec %s\n", path);
+    printf("aslr: %d\n", randomize_va_space);
+#endif
 
     if ((ip = namei(path)) == 0) {
         end_op();
@@ -46,26 +57,69 @@ int exec(char *path, char **argv) {
     if ((pagetable = proc_pagetable(p)) == 0)
         goto bad;
 
+    uint64 load_base = randomize_va_space ? get_random(1, 257) * PGSIZE : 0;
+
     // Load program into memory.
     for (i = 0, off = elf.phoff; i < elf.phnum; i++, off += sizeof(ph)) {
         if (readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
             goto bad;
         if (ph.type != ELF_PROG_LOAD)
             continue;
+
+        // _init example:
+        // e.g. ph.vaddr = 0x2ee8
+        uint64 pageoff = ph.vaddr - PGROUNDDOWN(ph.vaddr); // pageoff = 0xee8
+        uint64 va0 = load_base + PGROUNDDOWN(ph.vaddr);    // va0 = lb + 0x2000
+        uint64 offset0 = ph.off - pageoff;                 // offset0 = 0x1000
+        uint64 filesz0 = ph.filesz + pageoff;              // filesz0 = 0x128 + 0xee8
+
         if (ph.memsz < ph.filesz)
             goto bad;
         if (ph.vaddr + ph.memsz < ph.vaddr)
             goto bad;
-        if (ph.vaddr % PGSIZE != 0)
+        if (ph.off < pageoff)
             goto bad;
         uint64 sz1;
-        if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz,
+        if ((sz1 = uvmalloc(pagetable, sz, load_base + ph.vaddr + ph.memsz,
                             flags2perm(ph.flags))) == 0)
             goto bad;
         sz = sz1;
-        if (loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+        // loadseg argument 'va' must be page-aligned
+        //   it means we load more bytes operating with pages so
+        //   that ph.vaddr access will be to the same virtual address
+        //   as it was supposed when creating ELF
+        if (loadseg(pagetable, va0, ip, offset0, filesz0) < 0)
             goto bad;
     }
+
+    // Resolve relocations
+    for (i = 0, off = elf.shoff; i < elf.shnum; i++, off += sizeof(sh)) {
+        if (readi(ip, 0, (uint64)&sh, off, sizeof(sh)) != sizeof(sh))
+            goto bad;
+        if (sh.type != ELF_SECT_TYPE_RELA)
+            continue;
+
+        int reloff;
+        for (reloff = sh.offset; reloff < sh.offset + sh.size; reloff += sizeof(relocation)) {
+            if (readi(ip, 0, (uint64)&relocation, reloff, sizeof(relocation)) != sizeof(relocation))
+                goto bad;
+
+            uint rela_type = ELF_RELA_TYPE(relocation.info);
+            
+            switch (rela_type) {
+                case R_RISCV_RELATIVE: {
+                    // value is address
+                    uint64 value = load_base + relocation.addend;
+                    if (copyout(pagetable, load_base + relocation.offset, (char*)&value, sizeof(value)) != 0)
+                        panic("exec: copyout relocation");
+                    break;
+                }
+                default:
+                    panic("exec: relocation type not handled");
+            }
+        }
+    }
+
     iunlockput(ip);
     end_op();
     ip = 0;
@@ -73,12 +127,14 @@ int exec(char *path, char **argv) {
     p = myproc();
     uint64 oldsz = p->sz;
 
-    // Allocate some pages at the next page boundary.
-    // Make the first inaccessible as a stack guard.
-    // Use the rest as the user stack.
+    // Allocate random number of pages at the next page boundary.
+    // Make the last - 1 inaccessible as a stack guard.
+    // Use the last as the user stack.
     sz = PGROUNDUP(sz);
+    // page-level randomization from 1 to 256 pages
+    uint64 stack_offset = randomize_va_space ? get_random(1, 257) : 0;
     uint64 sz1;
-    if ((sz1 = uvmalloc(pagetable, sz, sz + (USERSTACK + 1) * PGSIZE, PTE_W)) ==
+    if ((sz1 = uvmalloc(pagetable, sz, sz + (stack_offset + USERSTACK + 1) * PGSIZE, PTE_W)) ==
         0)
         goto bad;
     sz = sz1;
@@ -123,8 +179,8 @@ int exec(char *path, char **argv) {
     oldpagetable = p->pagetable;
     p->pagetable = pagetable;
     p->sz = sz;
-    p->trapframe->epc = elf.entry; // initial program counter = main
-    p->trapframe->sp = sp;         // initial stack pointer
+    p->trapframe->epc = load_base + elf.entry; // initial program counter = main
+    p->trapframe->sp = sp;                     // initial stack pointer
     proc_freepagetable(oldpagetable, oldsz);
 
     return argc; // this ends up in a0, the first argument to main(argc, argv)

@@ -29,29 +29,31 @@ OBJS = \
   $K/trap/trampoline.o \
   $K/trap/trap.o \
   $K/virt/virtio_disk.o \
+  $K/virt/virtio_rng.o \
+  $K/random.o \
   $K/alloc/buddy.o \
   $K/alloc/kalloc.o \
   $K/log.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
-#TOOLPREFIX = 
+TOOLPREFIX = riscv64-linux-gnu-
 
 # Try to infer the correct TOOLPREFIX if not set
-ifndef TOOLPREFIX
-TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-unknown-elf-'; \
-	elif riscv64-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-elf-'; \
-	elif riscv64-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-linux-gnu-'; \
-	elif riscv64-unknown-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-unknown-linux-gnu-'; \
-	else echo "***" 1>&2; \
-	echo "*** Error: Couldn't find a riscv64 version of GCC/binutils." 1>&2; \
-	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
-	echo "***" 1>&2; exit 1; fi)
-endif
+# ifndef TOOLPREFIX
+# TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-unknown-elf-'; \
+# 	elif riscv64-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-elf-'; \
+# 	elif riscv64-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-linux-gnu-'; \
+# 	elif riscv64-unknown-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-unknown-linux-gnu-'; \
+# 	else echo "***" 1>&2; \
+# 	echo "*** Error: Couldn't find a riscv64 version of GCC/binutils." 1>&2; \
+# 	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
+# 	echo "***" 1>&2; exit 1; fi)
+# endif
 
 QEMU = qemu-system-riscv64
 
@@ -74,16 +76,10 @@ CFLAGS += -fno-builtin-memcpy -Wno-main
 CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-
-# Disable PIE when possible (for Ubuntu 16.10 toolchain)
-ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
-CFLAGS += -fno-pie -no-pie
-endif
-ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
-CFLAGS += -fno-pie -nopie
-endif
+CFLAGS += -fPIE
 
 LDFLAGS = -z max-page-size=4096
+LDUSERFLAGS = -pie -e start
 
 $K/kernel: $(OBJS) $K/entry/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/entry/kernel.ld -o $K/kernel $(OBJS) 
@@ -102,7 +98,10 @@ tags: $(OBJS) _init
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 _%: %.o $(ULIB)
-	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
+# 	$(LD) $(LDFLAGS) ${LDUSERFLAGS} -T $U/user.ld -o $@ $^
+# 	in ASLR linker script user.ld is not used anymore
+# 	-e start is needed to set entry point address in ELF to 'start' symbol
+	$(LD) $(LDFLAGS) ${LDUSERFLAGS} -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
 	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
 
@@ -160,6 +159,7 @@ UPROGS=\
 	$U/_cowtest\
 	$U/_lazytests\
 	$U/_pingpong\
+	$U/_aslrcheck\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
@@ -189,6 +189,10 @@ QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nogr
 QEMUOPTS += -global virtio-mmio.force-legacy=false
 QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+# adding random number generator (RNG) from host as a seed
+QEMUOPTS += -object rng-random,filename=/dev/urandom,id=rng0
+QEMUOPTS += -device virtio-rng-device,rng=rng0,bus=virtio-mmio-bus.1
+# QEMUOPTS += -machine dumpdtb=virt.dtb
 
 qemu: $K/kernel fs.img
 	$(QEMU) $(QEMUOPTS)
